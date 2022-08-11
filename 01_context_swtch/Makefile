@@ -3,25 +3,26 @@ CROSS_COMPILE=riscv64-linux-gnu-
 CC=$(CROSS_COMPILE)gcc
 
 CFLAGS += -g
+Q = @
 
 SRCS = $(wildcard *.c)
 ASM_SRCS = $(wildcard *.S)
-OBJS = $(patsubst %.c,%.o $(SRCS))
-ASM_OBJS = $(patsubst %.S,%.o $(ASM_SRCS))
+OBJS = $(patsubst %.c,%.o, $(SRCS))
+ASM_OBJS = $(patsubst %.S,%.o, $(ASM_SRCS))
 
 main: $(OBJS) $(ASM_OBJS)
-	$(CC) $^ -o $@
+	$(Q)$(CC) $^ -o $@
 
 %.o: %.S
-	$(CC) -c $< -o $@
+	$(Q)$(CC) -c $< -o $@
 
 .dep:
-	rm $@ -rf
-	for src in $(SRCS); do $(CC) -MM $$src >> $@; done
-
-include .dep
+	$(Q)rm $@ -rf
+	$(Q)for src in $(SRCS); do $(CC) -MM $$src >> $@; done
 
 clean:
-	-rm -rf *.o main .dep
+	$(Q)-rm -rf *.o main .dep
 
 .PHONY: clean
+
+include .dep
