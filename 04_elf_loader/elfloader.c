@@ -10,6 +10,13 @@
 
 #define ROUND_DOWN(a, m) (((unsigned long)(a)) & (~((unsigned long)(m)-1)))
 
+/*use __va_args__, beacause there are values which look like "{a, b}"*/
+#define push(sp, T, ...)               \
+    ({                                 \
+        *(T *)(sp) = (T)__VA_ARGS__;   \
+        sp = ((char *)sp) + sizeof(T); \
+    })
+
 int main(int argc, char **argv)
 {
 
@@ -61,16 +68,27 @@ int main(int argc, char **argv)
     close(fd);
 
     static char stack[1024 * 8];
+    static char rnd[16];
+
     void *sp = (void *)(stack + sizeof(stack) - 256);
     void *sp_exec = sp;
 
-    *(long *)sp = 1;
-    sp = ((long *)sp) + 1;
-    *(const char **)sp = argv[1];
-    sp = ((const char **)sp) + 1;
-    *(const char **)sp = 0;
+    // argc
+    push(sp, long, 1);
 
-    asm volatile("mov $0, %%rdx;"
+    // argv
+    push(sp, const char *, argv[1]);
+    push(sp, long, 0);
+
+    // env
+    push(sp, long, 0);
+
+    // aux vectors
+    push(sp, Elf64_auxv_t, {.a_type = AT_RANDOM, .a_un.a_val = (uint64_t)rnd});
+    push(sp, Elf64_auxv_t, {.a_type = AT_NULL});
+
+    asm volatile("mov $0, %%rbp;"
+                 "mov $0, %%rdx;"
                  "mov %0, %%rsp;"
                  "jmp *%1;" ::"a"(sp_exec),
                  "b"(ehdr->e_entry)
