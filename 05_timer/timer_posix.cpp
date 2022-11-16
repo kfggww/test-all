@@ -55,6 +55,11 @@ bool TimerPOSIX::AddCallback(long ms, const TimerCallback cb, void *data) {
 
     pthread_mutex_lock(&cb_lock_);
 
+    if (cb_map_.find(cb) != cb_map_.end()) {
+        pthread_mutex_unlock(&cb_lock_);
+        return false;
+    }
+
     CBEntity cbe(ms, cb, data);
     cb_set_.insert(cbe);
     cb_map_[cb] = cbe;
