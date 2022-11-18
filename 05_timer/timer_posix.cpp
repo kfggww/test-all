@@ -1,7 +1,8 @@
-#include <assert.h>
-#include <mutex>
-
 #include "timer_posix.h"
+
+#include <assert.h>
+
+#include <mutex>
 
 /*Real time signal that POSIX timer uses*/
 #define SIG_POSIX_TIMER SIGRTMIN
@@ -44,7 +45,6 @@ pthread_t TimerPOSIX::main_thread_;
 pthread_t TimerPOSIX::worker_thread_;
 
 TimerPOSIX::TimerPOSIX() { std::call_once(create_flag, TimerPOSIX::Create); }
-TimerPOSIX::~TimerPOSIX() { std::call_once(destroy_flag, TimerPOSIX::Destroy); }
 
 /**
  *
@@ -127,11 +127,6 @@ void TimerPOSIX::Create() {
 /**
  *
  */
-void TimerPOSIX::Destroy() {}
-
-/**
- *
- */
 void *TimerPOSIX::MainThreadEntry(void *data) {
     int err = 0;
     int sig = 0;
@@ -155,7 +150,6 @@ void *TimerPOSIX::MainThreadEntry(void *data) {
  *
  */
 void *TimerPOSIX::WorkerThreadEntry(void *data) {
-
     while (true) {
         pthread_mutex_lock(&worker_busy_lock_);
         while (!worker_busy_) {
@@ -219,7 +213,7 @@ void TimerPOSIX::HandleCallbacks() {
     while (itr != cb_set_.end()) {
         clock_gettime(CLOCKID_POSIX_TIMER, &now);
         if (LaterThan(&now, itr->GetDeadline())) {
-            // TODO: maybe create a new thread to execute cb
+            // TODO: maybe create a new thread to execute callback, so the buggy callback can never block timer
             cb = itr->GetCallback();
             data = itr->GetData();
             cb(data);

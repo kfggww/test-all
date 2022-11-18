@@ -1,25 +1,25 @@
 #ifndef _TIMER_POSIX_H_
 #define _TIMER_POSIX_H_
 
-#include <map>
 #include <pthread.h>
-#include <set>
 #include <signal.h>
 #include <time.h>
+
+#include <map>
+#include <set>
 
 #include "timer.h"
 
 class TimerPOSIX final : public Timer {
   public:
     TimerPOSIX();
-    virtual ~TimerPOSIX();
+    virtual ~TimerPOSIX() = default;
 
     bool AddCallback(long ms, const TimerCallback cb, void *data) override;
     bool RemoveCallback(const TimerCallback cb) override;
 
   private:
     static void Create();
-    static void Destroy();
 
     static void *MainThreadEntry(void *data);
     static void *WorkerThreadEntry(void *data);
