@@ -10,12 +10,27 @@
 
 #include "timer.h"
 
+/**
+ * @brief Timer implementation using POSIX timer API, the resolution of this timer is 500ms for now. The typical usages
+ * are as follows:
+ *
+ * @code{.cpp}
+ * // 1. Create a timer
+ * TimerPOSIX timer;
+ *
+ * // 2. Add some user defined callback to timer
+ * timer.AddCallback(...);
+ *
+ * // 3. Client program can do other stuff now, the callback will be called automaticlly when the deadline arrives
+ * @endcode
+ */
 class TimerPOSIX final : public Timer {
   public:
     TimerPOSIX();
     virtual ~TimerPOSIX() = default;
 
     bool AddCallback(long ms, const TimerCallback cb, void *data) override;
+    bool AddCallback(const TimerCallbackEntity &cbe) override;
     bool RemoveCallback(const TimerCallback cb) override;
 
   private:
@@ -29,23 +44,6 @@ class TimerPOSIX final : public Timer {
 
     static void HandleCallbacks();
 
-    class CBEntity {
-      public:
-        CBEntity() = default;
-        CBEntity(const CBEntity &other) = default;
-        CBEntity(const long interval_ms, const TimerCallback cb, void *data);
-
-        bool operator<(const CBEntity &other) const;
-        const struct timespec *GetDeadline() const;
-        TimerCallback GetCallback() const;
-        void *GetData() const;
-
-      private:
-        struct timespec deadline_;
-        TimerCallback callback_;
-        void *data_;
-    };
-
   private:
     static timer_t posix_timerid_;
     static sigset_t sigset_;
@@ -55,8 +53,8 @@ class TimerPOSIX final : public Timer {
     static pthread_mutex_t worker_busy_lock_;
     static pthread_cond_t worker_busy_cond_;
 
-    static std::set<CBEntity> cb_set_;
-    static std::map<TimerCallback, CBEntity> cb_map_;
+    static std::set<TimerCallbackEntity> cb_set_;
+    static std::map<TimerCallback, TimerCallbackEntity> cb_map_;
     static pthread_mutex_t cb_lock_;
 
     static pthread_t main_thread_;

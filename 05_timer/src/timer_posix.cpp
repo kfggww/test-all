@@ -6,28 +6,10 @@
 
 /*Real time signal that POSIX timer uses*/
 #define SIG_POSIX_TIMER SIGRTMIN
-/*Hardware clock that POSIX timer uses*/
-#define CLOCKID_POSIX_TIMER CLOCK_MONOTONIC
 /*POSIX timer resolution*/
 #define RES_POSIX_TIMER 500
 
-/**
- *
- */
-static bool LaterThan(const struct timespec *now, const struct timespec *deadline) {
-    if (nullptr == now || nullptr == deadline)
-        return false;
-
-    if (now->tv_sec > deadline->tv_sec)
-        return true;
-    else if (now->tv_sec == deadline->tv_sec && now->tv_nsec >= deadline->tv_nsec)
-        return true;
-    else
-        return false;
-}
-
 static std::once_flag create_flag;
-static std::once_flag destroy_flag;
 
 timer_t TimerPOSIX::posix_timerid_;
 sigset_t TimerPOSIX::sigset_;
@@ -37,8 +19,8 @@ volatile bool TimerPOSIX::worker_busy_;
 pthread_mutex_t TimerPOSIX::worker_busy_lock_;
 pthread_cond_t TimerPOSIX::worker_busy_cond_;
 
-std::set<TimerPOSIX::CBEntity> TimerPOSIX::cb_set_;
-std::map<TimerCallback, TimerPOSIX::CBEntity> TimerPOSIX::cb_map_;
+std::set<TimerCallbackEntity> TimerPOSIX::cb_set_;
+std::map<TimerCallback, TimerCallbackEntity> TimerPOSIX::cb_map_;
 pthread_mutex_t TimerPOSIX::cb_lock_;
 
 pthread_t TimerPOSIX::main_thread_;
@@ -47,22 +29,42 @@ pthread_t TimerPOSIX::worker_thread_;
 TimerPOSIX::TimerPOSIX() { std::call_once(create_flag, TimerPOSIX::Create); }
 
 /**
+ * @brief Add callback to the timer.
  *
+ * @param ms time interval to the deadline of callback, measured in millisecond
+ * @param cb pointer of callback function
+ * @param data argument passed to the callback
+ *
+ * @return true if success
  */
 bool TimerPOSIX::AddCallback(long ms, const TimerCallback cb, void *data) {
     if (ms <= RES_POSIX_TIMER || nullptr == cb)
         return false;
 
+    TimerCallbackEntity cbe(ms, cb, data);
+    return AddCallback(cbe);
+}
+
+/**
+ * @brief Add callback to the timer, it will enable the internal timer if needed.
+ *
+ * @param cbe callback entity
+ *
+ * @return true if success
+ */
+bool TimerPOSIX::AddCallback(const TimerCallbackEntity &cbe) {
+    if (cbe.GetInterval() <= RES_POSIX_TIMER || nullptr == cbe.GetCallback())
+        return false;
+
     pthread_mutex_lock(&cb_lock_);
 
-    if (cb_map_.find(cb) != cb_map_.end()) {
+    if (cb_map_.find(cbe.GetCallback()) != cb_map_.end()) {
         pthread_mutex_unlock(&cb_lock_);
         return false;
     }
 
-    CBEntity cbe(ms, cb, data);
     cb_set_.insert(cbe);
-    cb_map_[cb] = cbe;
+    cb_map_[cbe.GetCallback()] = cbe;
 
     if (timer_disabled_) {
         EnableTimer();
@@ -75,7 +77,11 @@ bool TimerPOSIX::AddCallback(long ms, const TimerCallback cb, void *data) {
 }
 
 /**
+ * @brief Remove callback from the timer, it will disable internal timer if the callbacks set is empty.
  *
+ * @param cb callback function that has been added before
+ *
+ * @return true if success
  */
 bool TimerPOSIX::RemoveCallback(const TimerCallback cb) {
     if (nullptr == cb)
@@ -100,7 +106,7 @@ bool TimerPOSIX::RemoveCallback(const TimerCallback cb) {
 }
 
 /**
- *
+ * @brief Initialize TimerPOSIX.
  */
 void TimerPOSIX::Create() {
     timer_disabled_ = true;
@@ -108,7 +114,7 @@ void TimerPOSIX::Create() {
         .sigev_signo = SIG_POSIX_TIMER,
         .sigev_notify = SIGEV_SIGNAL,
     };
-    assert(!timer_create(CLOCKID_POSIX_TIMER, &ev, &posix_timerid_));
+    assert(!timer_create(CLOCKID_TIMER, &ev, &posix_timerid_));
 
     assert(!sigemptyset(&sigset_));
     assert(!sigaddset(&sigset_, SIG_POSIX_TIMER));
@@ -125,7 +131,7 @@ void TimerPOSIX::Create() {
 }
 
 /**
- *
+ * @brief The main thread entry. It waits for the signal then notify the worker thread.
  */
 void *TimerPOSIX::MainThreadEntry(void *data) {
     int err = 0;
@@ -147,7 +153,7 @@ void *TimerPOSIX::MainThreadEntry(void *data) {
 }
 
 /**
- *
+ * @brief The worker thread entry. It waits for busy condition to become ture then handle the callbacks.
  */
 void *TimerPOSIX::WorkerThreadEntry(void *data) {
     while (true) {
@@ -173,14 +179,14 @@ void *TimerPOSIX::WorkerThreadEntry(void *data) {
 }
 
 /**
- *
+ * @brief Enable internal POSIX timer.
  */
 void TimerPOSIX::EnableTimer() {
     if (!timer_disabled_)
         return;
 
     struct itimerspec itv;
-    clock_gettime(CLOCKID_POSIX_TIMER, &itv.it_value);
+    clock_gettime(CLOCKID_TIMER, &itv.it_value);
     itv.it_value.tv_sec = (RES_POSIX_TIMER / 1000);
     itv.it_value.tv_nsec = (RES_POSIX_TIMER % 1000) * 1000000;
     itv.it_interval.tv_sec = (RES_POSIX_TIMER / 1000);
@@ -191,7 +197,7 @@ void TimerPOSIX::EnableTimer() {
 }
 
 /**
- *
+ * @brief Disable internal POSIX timer.
  */
 void TimerPOSIX::DisableTimer() {
     struct itimerspec itv;
@@ -204,6 +210,9 @@ void TimerPOSIX::DisableTimer() {
     timer_disabled_ = true;
 }
 
+/**
+ * @brief Used by the worker thread, all the expired callbacks are called here.
+ */
 void TimerPOSIX::HandleCallbacks() {
     struct timespec now;
     TimerCallback cb = nullptr;
@@ -211,7 +220,7 @@ void TimerPOSIX::HandleCallbacks() {
 
     auto itr = cb_set_.begin();
     while (itr != cb_set_.end()) {
-        clock_gettime(CLOCKID_POSIX_TIMER, &now);
+        clock_gettime(CLOCKID_TIMER, &now);
         if (LaterThan(&now, itr->GetDeadline())) {
             // TODO: maybe create a new thread to execute callback, so the buggy callback can never block timer
             cb = itr->GetCallback();
@@ -224,20 +233,3 @@ void TimerPOSIX::HandleCallbacks() {
             break;
     }
 }
-
-TimerPOSIX::CBEntity::CBEntity(const long interval_ms, const TimerCallback cb, void *data)
-    : callback_(cb), data_(data) {
-    clock_gettime(CLOCKID_POSIX_TIMER, &deadline_);
-    deadline_.tv_sec += interval_ms / 1000;
-    deadline_.tv_nsec += (interval_ms % 1000) * 1000000;
-}
-
-bool TimerPOSIX::CBEntity::CBEntity::operator<(const CBEntity &other) const {
-    return !LaterThan(&deadline_, &other.deadline_);
-}
-
-const struct timespec *TimerPOSIX::CBEntity::CBEntity::GetDeadline() const { return &deadline_; }
-
-TimerCallback TimerPOSIX::CBEntity::CBEntity::GetCallback() const { return callback_; }
-
-void *TimerPOSIX::CBEntity::CBEntity::GetData() const { return data_; }
