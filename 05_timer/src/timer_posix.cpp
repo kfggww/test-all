@@ -9,41 +9,97 @@
 /*POSIX timer resolution*/
 #define RES_POSIX_TIMER 500
 
-static std::once_flag create_flag;
+int TimerPOSIX::GetRealTimeSignalNo() { return SIGRTMIN + 10; }
 
-timer_t TimerPOSIX::posix_timerid_;
-sigset_t TimerPOSIX::sigset_;
-bool TimerPOSIX::timer_disabled_;
+TimerHighResolution::TimerHighResolution() : created_(false) {
+    signo_ = TimerPOSIX::GetRealTimeSignalNo();
+    if (signo_ != -1) {
+        struct sigevent ev = {
+            .sigev_signo = signo_,
+            .sigev_notify = SIGEV_SIGNAL,
+        };
+        assert(0 == timer_create(CLOCKID_TIMER, &ev, &posix_timerid_));
+        sigset_t sigset;
+        assert(0 == sigemptyset(&sigset));
+        assert(0 == sigaddset(&sigset, signo_));
+        assert(0 == pthread_sigmask(SIG_BLOCK, &sigset, NULL));
+        pthread_create(&worker_thread_, NULL, TimerHighResolution::WorkerThreadEntry, this);
+        created_ = true;
+    }
+}
 
-volatile bool TimerPOSIX::worker_busy_;
-pthread_mutex_t TimerPOSIX::worker_busy_lock_;
-pthread_cond_t TimerPOSIX::worker_busy_cond_;
-
-std::set<TimerCallbackEntity> TimerPOSIX::cb_set_;
-std::map<TimerCallback, TimerCallbackEntity> TimerPOSIX::cb_map_;
-pthread_mutex_t TimerPOSIX::cb_lock_;
-
-pthread_t TimerPOSIX::main_thread_;
-pthread_t TimerPOSIX::worker_thread_;
-
-TimerPOSIX::TimerPOSIX() { std::call_once(create_flag, TimerPOSIX::Create); }
-
-/**
- * @brief Add callback to the timer.
- *
- * @param ms time interval to the deadline of callback, measured in millisecond
- * @param cb pointer of callback function
- * @param data argument passed to the callback
- *
- * @return true if success
- */
-bool TimerPOSIX::AddCallback(long ms, const TimerCallback cb, void *data) {
-    if (ms <= RES_POSIX_TIMER || nullptr == cb)
+bool TimerHighResolution::AddCallback(const TimerCallbackEntity &cbe) {
+    if (!created_ && !cbe.IsValid())
         return false;
 
-    TimerCallbackEntity cbe(ms, cb, data);
-    return AddCallback(cbe);
+    cb_entity_ = cbe;
+
+    struct itimerspec itv;
+    itv.it_interval.tv_sec = 0;
+    itv.it_interval.tv_nsec = 0;
+
+    long interval_ms = cb_entity_.GetIntervalMs();
+    long interval_ns = cb_entity_.GetIntervalNs();
+
+    if (interval_ms != 0) {
+        itv.it_value.tv_sec = (interval_ms / 1000);
+        itv.it_value.tv_nsec = (interval_ms % 1000) * 1000000;
+    } else if (interval_ns != 0) {
+        itv.it_value.tv_sec = interval_ns / 1000000000;
+        itv.it_value.tv_nsec = interval_ns % 1000000000;
+    }
+
+    assert(0 == timer_settime(posix_timerid_, 0, &itv, NULL));
+
+    return true;
 }
+
+bool TimerHighResolution::RemoveCallback(const TimerCallback cb) { return true; }
+
+void *TimerHighResolution::WorkerThreadEntry(void *data) {
+    TimerHighResolution *tp = static_cast<TimerHighResolution *>(data);
+    if (nullptr == tp)
+        return NULL;
+
+    int err = 0;
+    int sig;
+    sigset_t sigset;
+    sigemptyset(&sigset);
+    sigaddset(&sigset, tp->signo_);
+
+    while (true) {
+        err = sigwait(&sigset, &sig);
+        if (err || sig != tp->signo_ || !tp->cb_entity_.IsValid())
+            continue;
+
+        TimerCallback cb = tp->cb_entity_.GetCallback();
+        void *cb_arg = tp->cb_entity_.GetData();
+        cb(cb_arg);
+
+        tp->cb_entity_.Reset();
+    }
+
+    return NULL;
+}
+
+static std::once_flag create_flag;
+
+timer_t TimerNormalResolution::posix_timerid_;
+sigset_t TimerNormalResolution::sigset_;
+bool TimerNormalResolution::timer_disabled_;
+
+volatile bool TimerNormalResolution::worker_busy_;
+pthread_mutex_t TimerNormalResolution::worker_busy_lock_;
+pthread_cond_t TimerNormalResolution::worker_busy_cond_;
+
+std::set<TimerCallbackEntity> TimerNormalResolution::cb_set_;
+std::map<TimerCallback, TimerCallbackEntity> TimerNormalResolution::cb_map_;
+pthread_mutex_t TimerNormalResolution::cb_lock_;
+
+pthread_t TimerNormalResolution::main_thread_;
+pthread_t TimerNormalResolution::worker_thread_;
+
+TimerNormalResolution::TimerNormalResolution() { std::call_once(create_flag, TimerNormalResolution::Create); }
 
 /**
  * @brief Add callback to the timer, it will enable the internal timer if needed.
@@ -52,8 +108,8 @@ bool TimerPOSIX::AddCallback(long ms, const TimerCallback cb, void *data) {
  *
  * @return true if success
  */
-bool TimerPOSIX::AddCallback(const TimerCallbackEntity &cbe) {
-    if (cbe.GetInterval() <= RES_POSIX_TIMER || nullptr == cbe.GetCallback())
+bool TimerNormalResolution::AddCallback(const TimerCallbackEntity &cbe) {
+    if (cbe.GetIntervalMs() <= RES_POSIX_TIMER || nullptr == cbe.GetCallback())
         return false;
 
     pthread_mutex_lock(&cb_lock_);
@@ -83,7 +139,7 @@ bool TimerPOSIX::AddCallback(const TimerCallbackEntity &cbe) {
  *
  * @return true if success
  */
-bool TimerPOSIX::RemoveCallback(const TimerCallback cb) {
+bool TimerNormalResolution::RemoveCallback(const TimerCallback cb) {
     if (nullptr == cb)
         return false;
 
@@ -108,7 +164,7 @@ bool TimerPOSIX::RemoveCallback(const TimerCallback cb) {
 /**
  * @brief Initialize TimerPOSIX.
  */
-void TimerPOSIX::Create() {
+void TimerNormalResolution::Create() {
     timer_disabled_ = true;
     struct sigevent ev = {
         .sigev_signo = SIG_POSIX_TIMER,
@@ -126,14 +182,14 @@ void TimerPOSIX::Create() {
 
     assert(!pthread_mutex_init(&cb_lock_, NULL));
 
-    assert(!pthread_create(&main_thread_, NULL, TimerPOSIX::MainThreadEntry, NULL));
-    assert(!pthread_create(&worker_thread_, NULL, TimerPOSIX::WorkerThreadEntry, NULL));
+    assert(!pthread_create(&main_thread_, NULL, TimerNormalResolution::MainThreadEntry, NULL));
+    assert(!pthread_create(&worker_thread_, NULL, TimerNormalResolution::WorkerThreadEntry, NULL));
 }
 
 /**
  * @brief The main thread entry. It waits for the signal then notify the worker thread.
  */
-void *TimerPOSIX::MainThreadEntry(void *data) {
+void *TimerNormalResolution::MainThreadEntry(void *data) {
     int err = 0;
     int sig = 0;
     while (true) {
@@ -155,7 +211,7 @@ void *TimerPOSIX::MainThreadEntry(void *data) {
 /**
  * @brief The worker thread entry. It waits for busy condition to become ture then handle the callbacks.
  */
-void *TimerPOSIX::WorkerThreadEntry(void *data) {
+void *TimerNormalResolution::WorkerThreadEntry(void *data) {
     while (true) {
         pthread_mutex_lock(&worker_busy_lock_);
         while (!worker_busy_) {
@@ -181,12 +237,11 @@ void *TimerPOSIX::WorkerThreadEntry(void *data) {
 /**
  * @brief Enable internal POSIX timer.
  */
-void TimerPOSIX::EnableTimer() {
+void TimerNormalResolution::EnableTimer() {
     if (!timer_disabled_)
         return;
 
     struct itimerspec itv;
-    clock_gettime(CLOCKID_TIMER, &itv.it_value);
     itv.it_value.tv_sec = (RES_POSIX_TIMER / 1000);
     itv.it_value.tv_nsec = (RES_POSIX_TIMER % 1000) * 1000000;
     itv.it_interval.tv_sec = (RES_POSIX_TIMER / 1000);
@@ -199,7 +254,7 @@ void TimerPOSIX::EnableTimer() {
 /**
  * @brief Disable internal POSIX timer.
  */
-void TimerPOSIX::DisableTimer() {
+void TimerNormalResolution::DisableTimer() {
     struct itimerspec itv;
     itv.it_value.tv_sec = 0;
     itv.it_value.tv_nsec = 0;
@@ -213,7 +268,7 @@ void TimerPOSIX::DisableTimer() {
 /**
  * @brief Used by the worker thread, all the expired callbacks are called here.
  */
-void TimerPOSIX::HandleCallbacks() {
+void TimerNormalResolution::HandleCallbacks() {
     struct timespec now;
     TimerCallback cb = nullptr;
     void *data = nullptr;

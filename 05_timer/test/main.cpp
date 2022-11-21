@@ -10,12 +10,12 @@ void callback1(void *data) {
 void callback2(void *data) { callback1(data); }
 
 int main(int argc, char **argv) {
-    TimerPOSIX timer;
+    TimerHighResolution timer;
     int a = 10;
-    int b = 20;
+    // int b = 20;
 
-    timer.AddCallback(2000, callback1, &a);
-    timer.AddCallback(3000, callback2, &b);
+    timer.AddCallback({callback1, &a, 2000});
+    // timer.AddCallback({callback2, &b, 3000});
 
     while (1)
         ;

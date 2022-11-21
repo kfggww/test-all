@@ -11,12 +11,41 @@
 #include "timer.h"
 
 /**
+ * @brief Super class of timers that using POSIX timer API.
+ */
+class TimerPOSIX : public Timer {
+  public:
+    static int GetRealTimeSignalNo();
+};
+
+/**
+ * @brief High resolution timer implementation. Each timer of this class can hold no more than one callback, after the
+ * current callback is called, the new one can be added.
+ */
+class TimerHighResolution final : public Timer {
+  public:
+    TimerHighResolution();
+    bool AddCallback(const TimerCallbackEntity &cbe) override;
+    bool RemoveCallback(const TimerCallback cb) override;
+
+  private:
+    static void *WorkerThreadEntry(void *data);
+
+  private:
+    bool created_;
+    TimerCallbackEntity cb_entity_;
+    int signo_;
+    timer_t posix_timerid_;
+    pthread_t worker_thread_;
+};
+
+/**
  * @brief Timer implementation using POSIX timer API, the resolution of this timer is 500ms for now. The typical usages
  * are as follows:
  *
  * @code{.cpp}
  * // 1. Create a timer
- * TimerPOSIX timer;
+ * TimerNormalResolution timer;
  *
  * // 2. Add some user defined callback to timer
  * timer.AddCallback(...);
@@ -24,12 +53,11 @@
  * // 3. Client program can do other stuff now, the callback will be called automaticlly when the deadline arrives
  * @endcode
  */
-class TimerPOSIX final : public Timer {
+class TimerNormalResolution final : public TimerPOSIX {
   public:
-    TimerPOSIX();
-    virtual ~TimerPOSIX() = default;
+    TimerNormalResolution();
+    virtual ~TimerNormalResolution() = default;
 
-    bool AddCallback(long ms, const TimerCallback cb, void *data) override;
     bool AddCallback(const TimerCallbackEntity &cbe) override;
     bool RemoveCallback(const TimerCallback cb) override;
 

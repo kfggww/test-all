@@ -14,16 +14,39 @@ bool LaterThan(const struct timespec *now, const struct timespec *deadline) {
         return false;
 }
 
-TimerCallbackEntity::TimerCallbackEntity(const long interval_ms, const TimerCallback cb, void *data)
-    : interval_ms_(interval_ms), callback_(cb), data_(data) {
+TimerCallbackEntity::TimerCallbackEntity(const TimerCallback cb, void *data, const long interval_ms,
+                                         const long interval_ns)
+    : callback_(cb), data_(data), interval_ms_(interval_ms), interval_ns_(interval_ns) {
     clock_gettime(CLOCKID_TIMER, &deadline_);
-    deadline_.tv_sec += interval_ms / 1000;
-    deadline_.tv_nsec += (interval_ms % 1000) * 1000000;
+    if (interval_ms != 0) {
+        deadline_.tv_sec += interval_ms / 1000;
+        deadline_.tv_nsec += (interval_ms % 1000) * 1000000;
+    } else if (interval_ns != 0) {
+        deadline_.tv_sec += interval_ns / 1000000000;
+        deadline_.tv_nsec += (interval_ns % 1000000000);
+    }
 }
 
-bool TimerCallbackEntity::operator<(const TimerCallbackEntity &other) const { return !LaterThan(&deadline_, &other.deadline_); }
+void TimerCallbackEntity::Reset() {
+    interval_ms_ = 0;
+    interval_ns_ = 0;
+    callback_ = nullptr;
+    data_ = nullptr;
+}
 
-const long TimerCallbackEntity::GetInterval() const { return interval_ms_; }
+bool TimerCallbackEntity::IsValid() const {
+    if (interval_ms_ < 0 || interval_ns_ < 0 || callback_ == nullptr || (interval_ms_ == 0 && interval_ns_ == 0))
+        return false;
+    return true;
+}
+
+bool TimerCallbackEntity::operator<(const TimerCallbackEntity &other) const {
+    return !LaterThan(&deadline_, &other.deadline_);
+}
+
+const long TimerCallbackEntity::GetIntervalMs() const { return interval_ms_; }
+
+const long TimerCallbackEntity::GetIntervalNs() const { return interval_ns_; }
 
 const struct timespec *TimerCallbackEntity::GetDeadline() const { return &deadline_; }
 
