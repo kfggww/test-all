@@ -30,7 +30,7 @@ class TimerPOSIX : public Timer {
  * @brief High resolution timer implementation. Each timer of this class can hold no more than one callback, after the
  * current callback is called, the new one can be added.
  */
-class TimerHighResolution final : public Timer {
+class TimerHighResolution final : public TimerPOSIX {
   public:
     TimerHighResolution();
     bool AddCallback(const TimerCallbackEntity &cbe) override;
@@ -41,10 +41,13 @@ class TimerHighResolution final : public Timer {
 
   private:
     bool created_;
-    TimerCallbackEntity cb_entity_;
+
     int signo_;
     timer_t posix_timerid_;
+
     pthread_t worker_thread_;
+    TimerCallbackEntity cb_entity_;
+    pthread_mutex_t cb_entity_lock_;
 };
 
 /**

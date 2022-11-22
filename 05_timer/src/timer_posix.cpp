@@ -41,6 +41,7 @@ void TimerPOSIX::Create() {
 }
 
 TimerHighResolution::TimerHighResolution() : created_(false) {
+    pthread_mutex_init(&cb_entity_lock_, NULL);
     signo_ = TimerPOSIX::GetRealTimeSignalNo();
     if (signo_ != -1) {
         struct sigevent ev = {
@@ -58,8 +59,12 @@ TimerHighResolution::TimerHighResolution() : created_(false) {
 }
 
 bool TimerHighResolution::AddCallback(const TimerCallbackEntity &cbe) {
-    if (!created_ && !cbe.IsValid())
+    pthread_mutex_lock(&cb_entity_lock_);
+
+    if (!created_ || !cbe.IsValid() || cb_entity_.IsValid()) {
+        pthread_mutex_unlock(&cb_entity_lock_);
         return false;
+    }
 
     cb_entity_ = cbe;
 
@@ -79,11 +84,25 @@ bool TimerHighResolution::AddCallback(const TimerCallbackEntity &cbe) {
     }
 
     assert(0 == timer_settime(posix_timerid_, 0, &itv, NULL));
+    pthread_mutex_unlock(&cb_entity_lock_);
 
     return true;
 }
 
-bool TimerHighResolution::RemoveCallback(const TimerCallback cb) { return true; }
+bool TimerHighResolution::RemoveCallback(const TimerCallback cb) {
+    if (!created_)
+        return false;
+
+    pthread_mutex_lock(&cb_entity_lock_);
+    if (cb != cb_entity_.GetCallback()) {
+        pthread_mutex_unlock(&cb_entity_lock_);
+        return false;
+    }
+    cb_entity_.Reset();
+    pthread_mutex_unlock(&cb_entity_lock_);
+
+    return true;
+}
 
 void *TimerHighResolution::WorkerThreadEntry(void *data) {
     TimerHighResolution *tp = static_cast<TimerHighResolution *>(data);
@@ -98,14 +117,17 @@ void *TimerHighResolution::WorkerThreadEntry(void *data) {
 
     while (true) {
         err = sigwait(&sigset, &sig);
-        if (err || sig != tp->signo_ || !tp->cb_entity_.IsValid())
+        if (err || sig != tp->signo_)
             continue;
 
-        TimerCallback cb = tp->cb_entity_.GetCallback();
-        void *cb_arg = tp->cb_entity_.GetData();
-        cb(cb_arg);
-
-        tp->cb_entity_.Reset();
+        pthread_mutex_lock(&tp->cb_entity_lock_);
+        if (tp->cb_entity_.IsValid()) {
+            TimerCallback cb = tp->cb_entity_.GetCallback();
+            void *cb_arg = tp->cb_entity_.GetData();
+            cb(cb_arg);
+            tp->cb_entity_.Reset();
+        }
+        pthread_mutex_lock(&tp->cb_entity_lock_);
     }
 
     return NULL;
