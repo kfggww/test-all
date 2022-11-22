@@ -7,7 +7,8 @@ typedef void (*TimerCallback)(void *);
 class TimerCallbackEntity;
 
 /**
- * @brief The top level class, declare what kind of services it provides.
+ * @brief The top level "Timer" class. It provides an interface of adding or
+ * removing callbacks.
  */
 class Timer {
   public:
@@ -18,15 +19,17 @@ class Timer {
 };
 
 /**
- * @brief Designed to be used by the client programs, they pass all the necessary informations to the timer through the
- * object of this class.
+ * @brief The callback entity. It contains information of callback function
+ * pointer, callback function argument and the deadline at which callback
+ * function should be called.
  *
  */
 class TimerCallbackEntity {
   public:
     TimerCallbackEntity() = default;
     TimerCallbackEntity(const TimerCallbackEntity &other) = default;
-    TimerCallbackEntity(const TimerCallback cb, void *data, const long interval_ms, const long interval_ns = 0);
+    TimerCallbackEntity(const TimerCallback cb, void *data,
+                        const long interval_ms, const long interval_ns = 0);
 
     void Reset();
     bool IsValid() const;

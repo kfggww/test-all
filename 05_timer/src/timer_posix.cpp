@@ -17,7 +17,7 @@ TimerPOSIX::TimerPOSIX() {
 /**
  * @brief Get a real time signal number.
  *
- * @return -1 if no real time signal can be used, otherwise signal number
+ * @return -1 if no real time signal can be used, signal number otherwise
  */
 int TimerPOSIX::GetRealTimeSignalNo() {
     pthread_mutex_lock(&signo_bits_lock_);
@@ -34,6 +34,11 @@ int TimerPOSIX::GetRealTimeSignalNo() {
     return i < SIGRTMAX ? i : -1;
 }
 
+/**
+ * @brief Mark signal with number signo as unused.
+ *
+ * @param: signo
+ */
 void TimerPOSIX::PutRealTimeSignalNo(int signo) {
     if (signo < SIGRTMIN || signo > SIGRTMAX)
         return;
@@ -42,6 +47,9 @@ void TimerPOSIX::PutRealTimeSignalNo(int signo) {
     pthread_mutex_unlock(&signo_bits_lock_);
 }
 
+/**
+ * @brief TimerPOSIX class initialization.
+ */
 void TimerPOSIX::Create() {
     /*Mark all signo as unused.*/
     pthread_mutex_init(&signo_bits_lock_, NULL);
@@ -52,9 +60,16 @@ void TimerPOSIX::Create() {
     assert(!sigemptyset(&sigset));
     for (int i = SIGRTMIN; i <= SIGRTMAX; ++i)
         assert(!sigaddset(&sigset, i));
+    sigaddset(&sigset, SIGQUIT);
     assert(!pthread_sigmask(SIG_BLOCK, &sigset, NULL));
 }
 
+/**
+ * @brief Construct high resolution timer. Each object of this class has its own
+ * real time signal number, posix timer id and worker thread. When some callback
+ * is added, timer will be enabled, and a signal is sent to the worker thread if
+ * the timer is expired.
+ */
 TimerHighResolution::TimerHighResolution() : created_(false) {
     pthread_mutex_init(&cb_entity_lock_, NULL);
     signo_ = TimerPOSIX::GetRealTimeSignalNo();
@@ -70,12 +85,24 @@ TimerHighResolution::TimerHighResolution() : created_(false) {
     }
 }
 
+/**
+ * @brief Destruct high resolution timer. The real time signal number is
+ * released, posix timer and worker thread associated with this object is freed.
+ */
 TimerHighResolution::~TimerHighResolution() {
     TimerPOSIX::PutRealTimeSignalNo(signo_);
     timer_delete(posix_timerid_);
     assert(!pthread_kill(worker_thread_, SIGQUIT));
 }
 
+/**
+ * @brief Add a callback entity to the high resolution timer.
+ *
+ * @param cbe: callback entity
+ *
+ * @return false if no posix timer has been created, or "cbe" is invalid, or
+ * there is already a valid callback entity inside current timer.
+ */
 bool TimerHighResolution::AddCallback(const TimerCallbackEntity &cbe) {
     pthread_mutex_lock(&cb_entity_lock_);
 
@@ -107,6 +134,13 @@ bool TimerHighResolution::AddCallback(const TimerCallbackEntity &cbe) {
     return true;
 }
 
+/**
+ * @brief Remove callback from the high resolution timer.
+ *
+ * @param: cb: callback function that has been added before
+ *
+ * @return true if success
+ */
 bool TimerHighResolution::RemoveCallback(const TimerCallback cb) {
     if (!created_)
         return false;
@@ -122,6 +156,10 @@ bool TimerHighResolution::RemoveCallback(const TimerCallback cb) {
     return true;
 }
 
+/**
+ * @brief Worker thread entry of high resolution timer. It handles callback if
+ * signo_ arrives, or the thread exits if SIGQUIT is received.
+ */
 void *TimerHighResolution::WorkerThreadEntry(void *data) {
     TimerHighResolution *tp = static_cast<TimerHighResolution *>(data);
     if (nullptr == tp)
@@ -177,10 +215,10 @@ TimerNormalResolution::TimerNormalResolution() {
 }
 
 /**
- * @brief Add callback to the timer, it will enable the internal timer if
- * needed.
+ * @brief Add callback to the normal resolution timer. It will enable the
+ * internal timer if needed.
  *
- * @param cbe callback entity
+ * @param cbe: callback entity
  *
  * @return true if success
  */
@@ -210,10 +248,10 @@ bool TimerNormalResolution::AddCallback(const TimerCallbackEntity &cbe) {
 }
 
 /**
- * @brief Remove callback from the timer, it will disable internal timer if the
- * callbacks set is empty.
+ * @brief Remove callback from the normal resolution timer. It will disable
+ * internal timer if the callbacks set is empty.
  *
- * @param cb callback function that has been added before
+ * @param cb: callback function that has been added before
  *
  * @return true if success
  */
@@ -240,7 +278,7 @@ bool TimerNormalResolution::RemoveCallback(const TimerCallback cb) {
 }
 
 /**
- * @brief Initialize TimerPOSIX.
+ * @brief TimerNormalResolution class initialization.
  */
 void TimerNormalResolution::Create() {
     timer_disabled_ = true;
@@ -265,8 +303,8 @@ void TimerNormalResolution::Create() {
 }
 
 /**
- * @brief The main thread entry. It waits for the signal then notify the worker
- * thread.
+ * @brief The main thread entry of normal resolution timer. It waits for the
+ * signal then notify the worker thread.
  */
 void *TimerNormalResolution::MainThreadEntry(void *data) {
     int err = 0;
@@ -294,8 +332,8 @@ void *TimerNormalResolution::MainThreadEntry(void *data) {
 }
 
 /**
- * @brief The worker thread entry. It waits for busy condition to become ture
- * then handle the callbacks.
+ * @brief The worker thread entry of normal resolution timer. It waits for busy
+ * condition to become ture then handle the callbacks.
  */
 void *TimerNormalResolution::WorkerThreadEntry(void *data) {
     while (true) {
@@ -321,7 +359,7 @@ void *TimerNormalResolution::WorkerThreadEntry(void *data) {
 }
 
 /**
- * @brief Enable internal POSIX timer.
+ * @brief Enable internal posix timer.
  */
 void TimerNormalResolution::EnableTimer() {
     if (!timer_disabled_)
@@ -338,7 +376,7 @@ void TimerNormalResolution::EnableTimer() {
 }
 
 /**
- * @brief Disable internal POSIX timer.
+ * @brief Disable internal posix timer.
  */
 void TimerNormalResolution::DisableTimer() {
     if (timer_disabled_)
@@ -352,7 +390,8 @@ void TimerNormalResolution::DisableTimer() {
 }
 
 /**
- * @brief Used by the worker thread, all the expired callbacks are called here.
+ * @brief Used by the worker thread of normal resolution timer, all the expired
+ * callbacks are called here.
  */
 void TimerNormalResolution::HandleCallbacks() {
     struct timespec now;
