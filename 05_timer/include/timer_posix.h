@@ -5,6 +5,7 @@
 #include <signal.h>
 #include <time.h>
 
+#include <bitset>
 #include <map>
 #include <mutex>
 #include <set>
@@ -17,22 +18,30 @@
 class TimerPOSIX : public Timer {
   public:
     TimerPOSIX();
+
+  protected:
     static int GetRealTimeSignalNo();
+    static void PutRealTimeSignalNo(int signo);
 
   private:
     static void Create();
 
   private:
     static std::once_flag create_flag_;
+
+    static pthread_mutex_t signo_bits_lock_;
+    static std::bitset<128> signo_bits_;
 };
 
 /**
- * @brief High resolution timer implementation. Each timer of this class can hold no more than one callback, after the
- * current callback is called, the new one can be added.
+ * @brief High resolution timer implementation. Each timer of this class can
+ * hold no more than one callback, after the current callback is called, the new
+ * one can be added.
  */
 class TimerHighResolution final : public TimerPOSIX {
   public:
     TimerHighResolution();
+    virtual ~TimerHighResolution();
     bool AddCallback(const TimerCallbackEntity &cbe) override;
     bool RemoveCallback(const TimerCallback cb) override;
 
@@ -51,8 +60,8 @@ class TimerHighResolution final : public TimerPOSIX {
 };
 
 /**
- * @brief Timer implementation using POSIX timer API, the resolution of this timer is 500ms for now. The typical usages
- * are as follows:
+ * @brief Timer implementation using POSIX timer API, the resolution of this
+ * timer is 500ms for now. The typical usages are as follows:
  *
  * @code{.cpp}
  * // 1. Create a timer
@@ -61,7 +70,8 @@ class TimerHighResolution final : public TimerPOSIX {
  * // 2. Add some user defined callback to timer
  * timer.AddCallback(...);
  *
- * // 3. Client program can do other stuff now, the callback will be called automaticlly when the deadline arrives
+ * // 3. Client program can do other stuff now, the callback will be called
+ * automaticlly when the deadline arrives
  * @endcode
  */
 class TimerNormalResolution final : public TimerPOSIX {
@@ -86,7 +96,6 @@ class TimerNormalResolution final : public TimerPOSIX {
   private:
     static std::once_flag create_flag_;
     static timer_t posix_timerid_;
-    static sigset_t sigset_;
     static bool timer_disabled_;
     static int signo_;
 
