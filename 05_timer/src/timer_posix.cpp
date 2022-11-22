@@ -2,14 +2,43 @@
 
 #include <assert.h>
 
-#include <mutex>
+/*Normal timer resolution*/
+#define TIMER_NORMAL_RESOLUTION 500
 
-/*Real time signal that POSIX timer uses*/
-#define SIG_POSIX_TIMER SIGRTMIN
-/*POSIX timer resolution*/
-#define RES_POSIX_TIMER 500
+std::once_flag TimerPOSIX::create_flag_;
 
-int TimerPOSIX::GetRealTimeSignalNo() { return SIGRTMIN + 10; }
+TimerPOSIX::TimerPOSIX() { std::call_once(TimerPOSIX::create_flag_, TimerPOSIX::Create); }
+
+/**
+ * @brief Get a real time signal number.
+ *
+ * @return -1 if no real time signal can be used, otherwise signal number
+ */
+int TimerPOSIX::GetRealTimeSignalNo() {
+    static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+    static long sigs = 0;
+
+    pthread_mutex_lock(&lock);
+    int i = SIGRTMIN;
+    while (i < SIGRTMAX) {
+        if ((sigs & (1 << i)) == 0) {
+            sigs |= (1 << i);
+            break;
+        }
+        i++;
+    }
+    pthread_mutex_unlock(&lock);
+
+    return i < SIGRTMAX ? i : -1;
+}
+
+void TimerPOSIX::Create() {
+    sigset_t sigset;
+    assert(0 == sigemptyset(&sigset));
+    for (int i = SIGRTMIN; i < SIGRTMAX; ++i)
+        assert(0 == sigaddset(&sigset, i));
+    assert(0 == pthread_sigmask(SIG_BLOCK, &sigset, NULL));
+}
 
 TimerHighResolution::TimerHighResolution() : created_(false) {
     signo_ = TimerPOSIX::GetRealTimeSignalNo();
@@ -82,11 +111,12 @@ void *TimerHighResolution::WorkerThreadEntry(void *data) {
     return NULL;
 }
 
-static std::once_flag create_flag;
+std::once_flag TimerNormalResolution::create_flag_;
 
 timer_t TimerNormalResolution::posix_timerid_;
 sigset_t TimerNormalResolution::sigset_;
 bool TimerNormalResolution::timer_disabled_;
+int TimerNormalResolution::signo_;
 
 volatile bool TimerNormalResolution::worker_busy_;
 pthread_mutex_t TimerNormalResolution::worker_busy_lock_;
@@ -99,7 +129,9 @@ pthread_mutex_t TimerNormalResolution::cb_lock_;
 pthread_t TimerNormalResolution::main_thread_;
 pthread_t TimerNormalResolution::worker_thread_;
 
-TimerNormalResolution::TimerNormalResolution() { std::call_once(create_flag, TimerNormalResolution::Create); }
+TimerNormalResolution::TimerNormalResolution() {
+    std::call_once(TimerNormalResolution::create_flag_, TimerNormalResolution::Create);
+}
 
 /**
  * @brief Add callback to the timer, it will enable the internal timer if needed.
@@ -109,7 +141,7 @@ TimerNormalResolution::TimerNormalResolution() { std::call_once(create_flag, Tim
  * @return true if success
  */
 bool TimerNormalResolution::AddCallback(const TimerCallbackEntity &cbe) {
-    if (cbe.GetIntervalMs() <= RES_POSIX_TIMER || nullptr == cbe.GetCallback())
+    if (cbe.GetIntervalMs() <= TIMER_NORMAL_RESOLUTION || nullptr == cbe.GetCallback())
         return false;
 
     pthread_mutex_lock(&cb_lock_);
@@ -166,14 +198,16 @@ bool TimerNormalResolution::RemoveCallback(const TimerCallback cb) {
  */
 void TimerNormalResolution::Create() {
     timer_disabled_ = true;
+    signo_ = TimerPOSIX::GetRealTimeSignalNo();
+
     struct sigevent ev = {
-        .sigev_signo = SIG_POSIX_TIMER,
+        .sigev_signo = signo_,
         .sigev_notify = SIGEV_SIGNAL,
     };
     assert(!timer_create(CLOCKID_TIMER, &ev, &posix_timerid_));
 
     assert(!sigemptyset(&sigset_));
-    assert(!sigaddset(&sigset_, SIG_POSIX_TIMER));
+    assert(!sigaddset(&sigset_, signo_));
     assert(!pthread_sigmask(SIG_BLOCK, &sigset_, NULL));
 
     worker_busy_ = false;
@@ -194,7 +228,8 @@ void *TimerNormalResolution::MainThreadEntry(void *data) {
     int sig = 0;
     while (true) {
         err = sigwait(&sigset_, &sig);
-        assert(0 == err && SIG_POSIX_TIMER == sig);
+        if (err != 0 || sig != signo_)
+            continue;
 
         if (pthread_mutex_trylock(&worker_busy_lock_))
             continue;
@@ -242,10 +277,10 @@ void TimerNormalResolution::EnableTimer() {
         return;
 
     struct itimerspec itv;
-    itv.it_value.tv_sec = (RES_POSIX_TIMER / 1000);
-    itv.it_value.tv_nsec = (RES_POSIX_TIMER % 1000) * 1000000;
-    itv.it_interval.tv_sec = (RES_POSIX_TIMER / 1000);
-    itv.it_interval.tv_nsec = (RES_POSIX_TIMER % 1000) * 1000000;
+    itv.it_value.tv_sec = (TIMER_NORMAL_RESOLUTION / 1000);
+    itv.it_value.tv_nsec = (TIMER_NORMAL_RESOLUTION % 1000) * 1000000;
+    itv.it_interval.tv_sec = (TIMER_NORMAL_RESOLUTION / 1000);
+    itv.it_interval.tv_nsec = (TIMER_NORMAL_RESOLUTION % 1000) * 1000000;
 
     timer_settime(posix_timerid_, 0, &itv, NULL);
     timer_disabled_ = false;

@@ -6,6 +6,7 @@
 #include <time.h>
 
 #include <map>
+#include <mutex>
 #include <set>
 
 #include "timer.h"
@@ -15,7 +16,14 @@
  */
 class TimerPOSIX : public Timer {
   public:
+    TimerPOSIX();
     static int GetRealTimeSignalNo();
+
+  private:
+    static void Create();
+
+  private:
+    static std::once_flag create_flag_;
 };
 
 /**
@@ -73,9 +81,11 @@ class TimerNormalResolution final : public TimerPOSIX {
     static void HandleCallbacks();
 
   private:
+    static std::once_flag create_flag_;
     static timer_t posix_timerid_;
     static sigset_t sigset_;
     static bool timer_disabled_;
+    static int signo_;
 
     static volatile bool worker_busy_;
     static pthread_mutex_t worker_busy_lock_;
