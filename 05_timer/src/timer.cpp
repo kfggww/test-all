@@ -2,6 +2,14 @@
 
 #include "timer.h"
 
+/**
+ * @brief if the absolute time "now" is later than the "deadline".
+ *
+ * @param now
+ * @param deadline
+ *
+ * @return true if "now" is later than "deadline"
+ */
 bool LaterThan(const struct timespec *now, const struct timespec *deadline) {
     if (nullptr == now || nullptr == deadline)
         return false;
@@ -31,7 +39,7 @@ TimerCallbackEntity::TimerCallbackEntity(const TimerCallback cb, void *data,
                                          const long interval_ns)
     : callback_(cb), data_(data), interval_ms_(interval_ms),
       interval_ns_(interval_ns) {
-    clock_gettime(CLOCKID_TIMER, &deadline_);
+    clock_gettime(CLOCK_MONOTONIC, &deadline_);
     if (interval_ms != 0) {
         deadline_.tv_sec += interval_ms / 1000;
         deadline_.tv_nsec += (interval_ms % 1000) * 1000000;

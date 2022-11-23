@@ -78,7 +78,7 @@ TimerHighResolution::TimerHighResolution() : created_(false) {
             .sigev_signo = signo_,
             .sigev_notify = SIGEV_SIGNAL,
         };
-        assert(!timer_create(CLOCKID_TIMER, &ev, &posix_timerid_));
+        assert(!timer_create(CLOCK_MONOTONIC, &ev, &posix_timerid_));
         pthread_create(&worker_thread_, NULL,
                        TimerHighResolution::WorkerThreadEntry, this);
         created_ = true;
@@ -288,7 +288,7 @@ void TimerNormalResolution::Create() {
         .sigev_signo = signo_,
         .sigev_notify = SIGEV_SIGNAL,
     };
-    assert(!timer_create(CLOCKID_TIMER, &ev, &posix_timerid_));
+    assert(!timer_create(CLOCK_MONOTONIC, &ev, &posix_timerid_));
 
     worker_busy_ = false;
     assert(!pthread_mutex_init(&worker_busy_lock_, NULL));
@@ -400,7 +400,7 @@ void TimerNormalResolution::HandleCallbacks() {
 
     auto itr = cb_set_.begin();
     while (itr != cb_set_.end()) {
-        clock_gettime(CLOCKID_TIMER, &now);
+        clock_gettime(CLOCK_MONOTONIC, &now);
         if (LaterThan(&now, itr->GetDeadline())) {
             // TODO: maybe create a new thread to execute callback, so the buggy
             // callback can never block timer

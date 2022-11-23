@@ -71,7 +71,7 @@ class TimerHighResolution final : public TimerPOSIX {
  * timer.AddCallback(...);
  *
  * // 3. Client program can do other stuff now, the callback will be called
- * automaticlly when the deadline arrives
+ * // automaticlly when the deadline arrives
  * @endcode
  */
 class TimerNormalResolution final : public TimerPOSIX {

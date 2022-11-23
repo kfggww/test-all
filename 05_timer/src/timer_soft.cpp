@@ -5,8 +5,7 @@
 /**
  * @brief Construct low resolution timer. Worker thread is started.
  */
-TimerLowResolution::TimerLowResolution()
-    : cbe_changed_(false), timer_stoped_(false) {
+TimerLowResolution::TimerLowResolution() : cbe_changed_(false) {
     pthread_mutex_init(&cbe_lock_, NULL);
 
     pthread_condattr_t cond_attr;

@@ -1,8 +1,6 @@
 #ifndef _TIMER_H_
 #define _TIMER_H_
 
-#define CLOCKID_TIMER CLOCK_MONOTONIC
-
 typedef void (*TimerCallback)(void *);
 class TimerCallbackEntity;
 
@@ -22,7 +20,6 @@ class Timer {
  * @brief The callback entity. It contains information of callback function
  * pointer, callback function argument and the deadline at which callback
  * function should be called.
- *
  */
 class TimerCallbackEntity {
   public:
@@ -50,14 +47,6 @@ class TimerCallbackEntity {
     struct timespec deadline_;
 };
 
-/**
- * @brief if the absolute time "now" is later than the "deadline".
- *
- * @param now
- * @param deadline
- *
- * @return true if "now" is later than "deadline"
- */
 bool LaterThan(const struct timespec *now, const struct timespec *deadline);
 
 #endif

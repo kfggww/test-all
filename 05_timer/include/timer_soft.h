@@ -33,8 +33,6 @@ class TimerLowResolution final : public Timer {
     pthread_mutex_t cbe_lock_;
     pthread_cond_t cbe_changed_cond_;
     bool cbe_changed_;
-
-    bool timer_stoped_;
 };
 
 #endif
