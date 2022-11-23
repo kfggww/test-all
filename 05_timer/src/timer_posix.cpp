@@ -186,7 +186,7 @@ void *TimerHighResolution::WorkerThreadEntry(void *data) {
             cb(cb_arg);
             tp->cb_entity_.Reset();
         }
-        pthread_mutex_lock(&tp->cb_entity_lock_);
+        pthread_mutex_unlock(&tp->cb_entity_lock_);
     }
 
     return NULL;
