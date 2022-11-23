@@ -7,6 +7,9 @@
 
 #include "timer.h"
 
+/**
+ * @brief Low resolution timer implementation.
+ */
 class TimerLowResolution final : public Timer {
   public:
     TimerLowResolution();
@@ -16,10 +19,10 @@ class TimerLowResolution final : public Timer {
     bool RemoveCallback(const TimerCallback cb) override;
 
   private:
-    TimerCallbackEntity GetFirstCBentity() const;
-    struct timespec GetSleepInterval(const TimerCallbackEntity &cbe) const;
+    TimerCallbackEntity GetFirstCallbackEntity() const;
+    void HandleCallbacks();
 
-    static void *WorkerThreadEntry(void *);
+    static void *WorkerThreadEntry(void *data);
 
   private:
     pthread_t worker_thread_;

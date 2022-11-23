@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22.1)
 project(timer)
 
-set(LIB_TIMER_SRCS ${CMAKE_SOURCE_DIR}/src/timer.cpp ${CMAKE_SOURCE_DIR}/src/timer_posix.cpp)
+set(LIB_TIMER_SRCS ${CMAKE_SOURCE_DIR}/src/timer.cpp ${CMAKE_SOURCE_DIR}/src/timer_posix.cpp ${CMAKE_SOURCE_DIR}/src/timer_soft.cpp)
 add_library(timer SHARED ${LIB_TIMER_SRCS})
 target_include_directories(timer PRIVATE ${CMAKE_SOURCE_DIR}/include)
 target_compile_options(timer PRIVATE -pthread)
