@@ -1,36 +1,11 @@
-#include "timer_posix.h"
-#include "timer_soft.h"
 #include <assert.h>
+#include <atomic>
 #include <cstdio>
 
-#include <atomic>
+#include "timer_posix.h"
+#include "timer_soft.h"
 
-// void callback1(void *data) {
-
-//     int *pa = (int *)data;
-//     printf("[%s] args: %d\n", __func__, *pa);
-// }
-
-// int main(int argc, char **argv) {
-//     // {
-//     int a = 10;
-//     int b = 20;
-//     int c = 30;
-//     TimerNormalResolution timer1;
-//     TimerHighResolution timer2;
-//     TimerLowResolution timer3;
-
-//     timer1.AddCallback({callback1, &a, 2000});
-//     timer2.AddCallback({callback1, &b, 3000});
-//     timer3.AddCallback({callback1, &c, 1000});
-//     // }
-
-//     sleep(5);
-
-//     return 0;
-// }
-
-std::atomic<int> counter = 0;
+std::atomic<int> counter(0);
 pthread_mutex_t cond_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond_cb3_done = PTHREAD_COND_INITIALIZER;
 
@@ -66,9 +41,10 @@ void *thread_entry(void *data) {
     return NULL;
 }
 
+/**
+ * Test low resolution timer with multiple threads.
+ */
 int main(int argc, char **argv) {
-
-    // TimerHighResolution timer;
 
     pthread_t t1, t2;
     pthread_create(&t1, NULL, thread_entry, &t1);

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.22.1)
+cmake_minimum_required(VERSION 3.16.3)
 project(timer)
 
 set(LIB_TIMER_SRCS ${CMAKE_SOURCE_DIR}/src/timer.cpp ${CMAKE_SOURCE_DIR}/src/timer_posix.cpp ${CMAKE_SOURCE_DIR}/src/timer_soft.cpp)
