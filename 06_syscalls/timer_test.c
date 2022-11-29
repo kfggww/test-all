@@ -6,7 +6,9 @@
 #include <time.h>
 
 void sig_handler(int signo, siginfo_t *info, void *data) {
-    printf("#%d signal\n", signo);
+    ucontext_t *ucp = (ucontext_t *)data;
+    printf("ucontext: %p\n", ucp);
+    printf("Signal #%d has been handled\n", signo);
 }
 
 int main(int argc, char **argv) {
@@ -36,6 +38,7 @@ int main(int argc, char **argv) {
 
     /*Wait for SIGRTMIN signl*/
     int err = sleep(10);
+    printf("stack addr: %p\n", &err);
     printf("Time left: %ds\n", err);
 
     return 0;
