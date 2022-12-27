@@ -1,8 +1,18 @@
 
+targets := msq_talker server client
+
+all: $(targets)
+
 msq_talker: src/sysv/msq_talker.c
 	$(CC) -g $< -o $@
 
-clean:
-	$(RM) -r msq_talker
+server: src/socket/server.c
+	$(CC) -g $< -o $@
 
-.PHONY: clean
+client: src/socket/client.c
+	$(CC) -g $< -o $@
+
+clean:
+	$(RM) -r $(targets)
+
+.PHONY: all clean
