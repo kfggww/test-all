@@ -4,8 +4,16 @@
 
 int main(int argc, char **argv) {
 
-    struct servent* servent = getservbyport(htonl(8889), NULL);
-    assert(servent != NULL);
+    int n = 10;
+    while (n--) {
+        struct servent *servent = getservent();
+        printf("name=%s, port=%d, proto=%s\n", servent->s_name,
+               htons(servent->s_port), servent->s_proto);
+    }
+
+    struct servent *servent = getservbyport(htons(22), NULL);
+    printf("name=%s, port=%d, proto=%s\n", servent->s_name,
+           htons(servent->s_port), servent->s_proto);
 
     return 0;
 }
