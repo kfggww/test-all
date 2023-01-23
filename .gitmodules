@@ -1,0 +1,3 @@
+[submodule "third-party/cutest"]
+	path = third-party/cutest
+	url = git@github.com:kfggww/cutest.git
