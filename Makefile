@@ -2,7 +2,7 @@ PROJECT_DIR := $(shell realpath .)
 
 SHELL := /bin/bash
 
-Q :=
+Q := @
 BUILD_DIR := build
 INSTALL_DIR := install
 
@@ -42,7 +42,6 @@ test: all
 
 $(BUILD_DIR)/%: %.c
 	$(Q)mkdir -p $(dir $@)
-	$(Q)ls install/include
 	$(Q)$(CC) -c $(CFLAGS) $(LDFLAGS) -MM -MT $@ $< >> $(deps)
 	$(Q)$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
 
