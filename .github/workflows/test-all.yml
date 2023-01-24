@@ -16,6 +16,12 @@ jobs:
 
     - name: echo
       run: echo ${PWD}
+      
+    - name: echo
+      run: echo "SHELL:" ${SHELL}
+      
+    - name: ls
+      run: ls -l ${SHELL}
 
     - name: submodule
       run: git submodule init; git submodule update;
@@ -24,4 +30,4 @@ jobs:
       run: ls third-party/cutest
 
     - name: build
-      run: bash make
+      run: SHELL=/usr/bin/bash make
