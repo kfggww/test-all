@@ -22,3 +22,6 @@ jobs:
       
     - name: ls
       run: ls third-party/cutest
+
+    - name: build
+      run: make
