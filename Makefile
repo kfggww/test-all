@@ -30,7 +30,7 @@ third_party:
 
 install: $(obj_execs)
 	$(Q)mkdir -p $(INSTALL_DIR)/bin
-	$(Q)cp $< $(INSTALL_DIR)/bin
+	$(Q)cp $^ $(INSTALL_DIR)/bin
 
 clean:
 	$(Q)rm -rf $(obj_execs) $(deps)
