@@ -2,7 +2,7 @@ PROJECT_DIR := $(shell realpath .)
 
 SHELL := /bin/bash
 
-Q := @
+Q :=
 BUILD_DIR := build
 INSTALL_DIR := install
 
