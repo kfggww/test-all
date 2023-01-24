@@ -42,6 +42,7 @@ test: all
 
 $(BUILD_DIR)/%: %.c
 	$(Q)mkdir -p $(dir $@)
+	$(Q)ls install/include
 	$(Q)$(CC) -c $(CFLAGS) $(LDFLAGS) -MM -MT $@ $< >> $(deps)
 	$(Q)$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
 
