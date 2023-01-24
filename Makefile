@@ -1,5 +1,7 @@
 PROJECT_DIR := $(shell realpath .)
 
+SHELL := /bin/bash
+
 Q := @
 BUILD_DIR := build
 INSTALL_DIR := install
