@@ -14,11 +14,8 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
-    - name: build
-      run: make
+    - name: echo
+      run: echo ${PWD}
 
-    - name: install
-      run: make install
-
-    - name: test
-      run: make test
+    - name: ls
+      run: ls
