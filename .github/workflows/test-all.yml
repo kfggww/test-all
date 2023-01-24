@@ -24,4 +24,4 @@ jobs:
       run: ls third-party/cutest
 
     - name: build
-      run: bash; make
+      run: bash make;
