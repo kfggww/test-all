@@ -25,6 +25,12 @@ all:
 subproj := $(SRC_DIR)/test-pipe
 include $(subproj)/module.mk
 
+subproj := $(SRC_DIR)/test-fifo
+include $(subproj)/module.mk
+
+subproj := $(SRC_DIR)/test-sysv-ipc
+include $(subproj)/module.mk
+
 all: third_party install
 
 third_party:
