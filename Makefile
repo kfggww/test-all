@@ -22,13 +22,7 @@ obj_execs :=
 
 all:
 
-subproj := $(SRC_DIR)/test-pipe
-include $(subproj)/module.mk
-
-subproj := $(SRC_DIR)/test-fifo
-include $(subproj)/module.mk
-
-subproj := $(SRC_DIR)/test-sysv-ipc
+subproj := $(SRC_DIR)/syscalls
 include $(subproj)/module.mk
 
 all: third_party install
