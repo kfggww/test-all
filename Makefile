@@ -14,7 +14,7 @@ common_inc := include $(INSTALL_DIR)/include
 deps := $(BUILD_DIR)/.deps
 test_cases = $(wildcard install/bin/*)
 
-CFLAGS :=
+CFLAGS := -g
 CFLAGS += $(addprefix -I, $(common_inc))
 LDFLAGS := -L$(INSTALL_DIR)/lib -lcutest
 

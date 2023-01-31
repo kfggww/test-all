@@ -14,7 +14,7 @@
 #define handle_error(pred, msg)                                                \
     do {                                                                       \
         if (pred) {                                                            \
-            perror("posix-shm-producer failed" #msg ":");                      \
+            perror("posix-shm-producer failed " #msg);                         \
             exit(errno);                                                       \
         }                                                                      \
     } while (0)
@@ -22,7 +22,7 @@
 int main(int argc, char **argv) {
 
     // 1. open shared memory
-    int shmfd = shm_open(SHM_NAME, O_RDONLY);
+    int shmfd = shm_open(SHM_NAME, O_RDONLY, 0);
     handle_error(shmfd < 0, shm_open);
 
     int *buf = (int *)mmap(NULL, 4096, PROT_READ, MAP_SHARED, shmfd, 0);
