@@ -9,6 +9,8 @@ INSTALL_DIR := install
 SRC_DIR := src
 SRC_THIRD_PARTY_DIR := third-party
 
+TEST :=
+
 third_party_projects := $(addprefix $(SRC_THIRD_PARTY_DIR)/, $(shell ls $(SRC_THIRD_PARTY_DIR)))
 common_inc := include $(INSTALL_DIR)/include
 deps := $(BUILD_DIR)/.deps
@@ -38,7 +40,11 @@ clean:
 	$(Q)rm -rf $(obj_execs) $(deps)
 
 test: all
-	$(Q)$(call run_tests)
+ifeq ($(TEST),)
+	$(Q)$(call run_tests, $(test_cases))
+else
+	$(Q)$(call run_tests, install/bin/$(TEST))
+endif
 
 $(BUILD_DIR)/%: %.c
 	$(Q)mkdir -p $(dir $@)
@@ -49,14 +55,14 @@ define build_install_projects
 for proj in $1; \
 do \
 	pushd $${proj}; \
-	make; \
-	make INSTALL_DIR=$(PROJECT_DIR)/$(INSTALL_DIR) install; \
+	make --no-print-directory; \
+	make --no-print-directory INSTALL_DIR=$(PROJECT_DIR)/$(INSTALL_DIR) install; \
 	popd; \
 done
 endef
 
 define run_tests
-for test_case in $(test_cases); \
+for test_case in $1; \
 do \
 	LD_LIBRARY_PATH=$(realpath install/lib) ./$${test_case}; \
 done;
