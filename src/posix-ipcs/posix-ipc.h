@@ -13,12 +13,15 @@
 #include <semaphore.h>
 
 #ifndef LOG_LEVEL
-#define LOG_LEVEL 1
+#define LOG_LEVEL LOG_LEVEL_MAX
 #endif
 
-#define LOG_INFO 0
-#define LOG_DEBUG 1
-#define LOG_WARNING 2
+enum {
+    LOG_INFO,
+    LOG_DEBUG,
+    LOG_WARNING,
+    LOG_LEVEL_MAX,
+};
 
 #define __log_print(level, fmt, ...)                                           \
     do {                                                                       \
@@ -44,30 +47,43 @@
 
 #define POSIX_IPC_SHM_NAME "/posix-ipc-shm"
 #define POSIX_IPC_SEM_NAME "/posix-ipc-sem"
-#define CS_REQ_BUF_SIZE 4096
+#define CS_REQ_SHM_SIZE 4096
 #define MQ_NAME_SIZE 64
 
-union msgbuf {
-    struct {
-        int a;
-        int b;
-    } request_add;
+struct msgbuf {
+    int type;
+    union {
+        struct {
+            int a;
+            int b;
+        } request_add;
 
-    struct {
-        int c;
-    } response_add;
+        struct {
+            int c;
+        } response_add;
 
-    struct {
-        int disconect;
-    } request_disconnect;
+        struct {
+            int disconect;
+        } request_disconnect;
 
-    struct {
-        int stop_server;
-    } request_stop_server;
+        struct {
+            int stop_server;
+        } request_stop_server;
+    } msg;
+};
+
+enum msgtype {
+    REQ_ADD,
+    RSP_ADD,
+    REQ_DISCONNECT,
+    REQ_STOP_SERVER,
+    TYPE_MAX,
 };
 
 struct connect_server_request {
-    char mq_name[64];
+    short valid;
+    char mqc2s_name[MQ_NAME_SIZE];
+    char mqs2c_name[MQ_NAME_SIZE];
 };
 
 #endif
