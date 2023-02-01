@@ -5,10 +5,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define _GNU_SOURCE
+#include <fcntl.h> /* For O_* constants */
 #include <unistd.h>
 #include <sys/mman.h>
 #include <sys/stat.h> /* For mode constants */
-#include <fcntl.h>    /* For O_* constants */
 #include <mqueue.h>
 #include <semaphore.h>
 
@@ -45,9 +46,10 @@ enum {
 #define log_debug(fmt, ...) __log_print(LOG_DEBUG, fmt, ##__VA_ARGS__)
 #define log_warning(fmt, ...) __log_print(LOG_WARNING, fmt, ##__VA_ARGS__)
 
-#define POSIX_IPC_SHM_NAME "/posix-ipc-shm"
-#define POSIX_IPC_SEM_NAME "/posix-ipc-sem"
-#define CS_REQ_SHM_SIZE 4096
+#define CONNECTION_SHM_NAME "/connection-shm"
+#define CONNECTION_SEM_NAME "/connection-sem"
+#define NEW_CONNECTION_SEM_NAME "/new-connection-sem"
+#define CONNECTION_SHM_SIZE 4096
 #define MQ_NAME_SIZE 64
 
 struct msgbuf {
@@ -69,7 +71,7 @@ struct msgbuf {
         struct {
             int stop_server;
         } request_stop_server;
-    } msg;
+    } data;
 };
 
 enum msgtype {
@@ -77,13 +79,15 @@ enum msgtype {
     RSP_ADD,
     REQ_DISCONNECT,
     REQ_STOP_SERVER,
-    TYPE_MAX,
+    MSG_TYPE_MAX,
 };
 
-struct connect_server_request {
+struct connection {
     short valid;
-    char mqc2s_name[MQ_NAME_SIZE];
-    char mqs2c_name[MQ_NAME_SIZE];
+    char mqreq[MQ_NAME_SIZE];
+    char mqrsp[MQ_NAME_SIZE];
+    int mqreq_fd;
+    int mqrsp_fd;
 };
 
 #endif

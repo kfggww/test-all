@@ -1,79 +1,128 @@
 #include "posix-ipc.h"
 
-int main(int argc, char **argv) {
+static struct connection connection;
 
-    /**
-     * 1. 创建用于和server通信的两个消息队列
-     * 获取pid
-     * 根据pid拼接两个消息队列的名字
-     * 创建两个消息队列
-     */
+int build_connection() {
+
+    // create and open 2 message queues
+    memset(&connection, 0, sizeof(connection));
 
     pid_t pid = getpid();
-
-    char mqc2s_name[MQ_NAME_SIZE];
-    char mqs2c_name[MQ_NAME_SIZE];
-    memset(mqc2s_name, 0, MQ_NAME_SIZE);
-    memset(mqs2c_name, 0, MQ_NAME_SIZE);
-    sprintf(mqc2s_name, "/posix-ipc-mqc2s_name.%d", pid);
-    sprintf(mqs2c_name, "/posix-ipc-mqs2c_name.%d", pid);
+    sprintf(connection.mqreq, "/client-mqreq.%d", pid);
+    sprintf(connection.mqrsp, "/client-mqrsp.%d", pid);
 
     struct mq_attr attr = {.mq_maxmsg = 10,
                            .mq_msgsize = sizeof(struct msgbuf)};
-    mqd_t mqc2s =
-        mq_open(mqc2s_name, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, &attr);
-    mqd_t mqs2c =
-        mq_open(mqs2c_name, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, &attr);
+    connection.mqreq_fd =
+        mq_open(connection.mqreq, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, &attr);
+    connection.mqrsp_fd =
+        mq_open(connection.mqrsp, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, &attr);
 
-    /**
-     * 2. 建立和server的连接
-     * map共享内存到自己的地址空间
-     * 获取公用的共享内存
-     * 等待共享内存可用
-     * 向共享内存写入数据，建立和server的连接，实际上是把两个消息队列的名字写到共享内存
-     * 释放共享内存
-     */
-    int shmfd = shm_open(POSIX_IPC_SHM_NAME, O_RDWR, 0);
-    struct connect_server_request *cs_req =
-        (struct connect_server_request *)mmap(NULL, CS_REQ_SHM_SIZE,
-                                              PROT_READ | PROT_WRITE,
-                                              MAP_SHARED, shmfd, 0);
+    if (connection.mqreq_fd == -1 || connection.mqrsp_fd == -1) {
+        log_info("client %d failed mq_open\n", pid);
+        return -1;
+    }
 
-    sem_t *cs_req_mutex = sem_open(POSIX_IPC_SEM_NAME, O_RDWR);
-    sem_wait(cs_req_mutex);
-    cs_req->valid = 1;
-    memcpy(cs_req->mqc2s_name, mqc2s_name, MQ_NAME_SIZE);
-    memcpy(cs_req->mqs2c_name, mqs2c_name, MQ_NAME_SIZE);
-    log_info("client [%d] request connection\n", pid);
-    sem_post(cs_req_mutex);
+    // open and map shared memory
+    int shmfd = shm_open(CONNECTION_SHM_NAME, O_RDWR, 0);
+    void *shm_buf = mmap(NULL, CONNECTION_SHM_SIZE, PROT_READ | PROT_WRITE,
+                         MAP_SHARED, shmfd, 0);
 
-    /**
-     * 3. 处理用户命令
-     * 获取命令
-     * 获取参数
-     * 写入请求消息队列
-     * 读取响应消息队列
-     */
-    struct msgbuf msg;
-    msg.type = REQ_DISCONNECT;
-    msg.msg.request_disconnect.disconect = 1;
-    mq_send(mqc2s, (char *)&msg, sizeof(msg), 0);
+    // write connection to shm_buf
+    sem_t *shm_buf_mutex = sem_open(CONNECTION_SEM_NAME, O_RDWR);
+    sem_wait(shm_buf_mutex);
+    connection.valid = 1;
+    memcpy(shm_buf, &connection, sizeof(connection));
+    sem_post(shm_buf_mutex);
+    sem_close(shm_buf_mutex);
 
-    /**
-     * 4. 清理资源
-     * 关闭消息队列
-     * 删除消息队列
-     * 关闭贡献内存
-     * unmap共享内存
-     */
+    log_info("client %d build connection\n", pid);
+    return 0;
+}
 
-    close(shmfd);
-    munmap(cs_req, CS_REQ_SHM_SIZE);
-    sem_close(cs_req_mutex);
+void request_add() {
+    int a = 0, b = 0;
 
-    mq_close(mqc2s);
-    mq_close(mqs2c);
+    log_info("Enter a and b:\n");
+    scanf("%d%d", &a, &b);
 
-    log_info("client [%d] exit\n", pid);
+    struct msgbuf msgreq = {
+        .type = REQ_ADD, .data.request_add.a = a, .data.request_add.b = b};
+    int err =
+        mq_send(connection.mqreq_fd, (const char *)&msgreq, sizeof(msgreq), 0);
+    if (err) {
+        log_warning("client failed mq_send in request_add\n");
+        return;
+    }
+
+    struct msgbuf msgrsp;
+    ssize_t sz =
+        mq_receive(connection.mqrsp_fd, (char *)&msgrsp, sizeof(msgrsp), NULL);
+    if (sz != sizeof(msgrsp)) {
+        log_warning("client failed mq_receive in request_add, sz: %ld\n", sz);
+        perror("client request_add mq_receive");
+        return;
+    }
+
+    log_info("client request_add: %d + %d = %d\n", msgreq.data.request_add.a,
+             msgreq.data.request_add.b, msgrsp.data.response_add.c);
+}
+
+void request_stop_server() {
+    struct msgbuf msgreq = {.type = REQ_STOP_SERVER,
+                            .data.request_stop_server.stop_server = 1};
+    mq_send(connection.mqreq_fd, (char *)&msgreq, sizeof(msgreq), 0);
+    log_info("client request_stop_server\n");
+}
+
+void request_disconnect() {
+    struct msgbuf msgreq = {.type = REQ_DISCONNECT,
+                            .data.request_disconnect.disconect = 1};
+    mq_send(connection.mqreq_fd, (char *)&msgreq, sizeof(msgreq), 0);
+    log_info("client request_disconnect\n");
+}
+
+void handle_command() {
+    char cmd[16] = {0};
+    while (cmd[0] != 'q') {
+        log_info("Enter cmd: (a)dd, (d)isconnect, (k)ill server\n");
+        scanf("%15s", cmd);
+        switch (cmd[0]) {
+        case 'a':
+            request_add();
+            break;
+        case 'k':
+            request_stop_server();
+            cmd[0] = 'q';
+            break;
+        case 'd':
+        default:
+            request_disconnect();
+            cmd[0] = 'q';
+            break;
+        }
+    }
+
+    log_info("client handle_command done\n");
+}
+
+void cleanup() {
+    mq_close(connection.mqreq_fd);
+    mq_close(connection.mqrsp_fd);
+
+    mq_unlink(connection.mqreq);
+    mq_unlink(connection.mqrsp);
+}
+
+int main(int argc, char **argv) {
+
+    if (build_connection()) {
+        log_info("client failed build_connection\n");
+        return -1;
+    }
+    handle_command();
+    cleanup();
+
+    log_info("client %d exit\n", getpid());
     return 0;
 }
