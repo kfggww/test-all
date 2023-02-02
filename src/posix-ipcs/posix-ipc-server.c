@@ -4,8 +4,8 @@ static struct {
     /* shared memory related data, */
     int conn_buf_fd;
     struct connection *conn_buf;
-    sem_t *conn_buf_mutex;
-    // sem_t *new_conn_sem;
+    sem_t *conn_buf_ready;
+    sem_t *conn_new_ready;
 
     /* pipe descriptors */
     int pipefd[2];
@@ -22,7 +22,7 @@ int handle_req_add(struct msgbuf *req_msg, struct connection *conn) {
 
     err = mq_send(conn->mqrsp_fd, (const char *)&rsp_msg, sizeof(struct msgbuf),
                   0);
-    log_info("handler_req_add: a=%d, b=%d, c=%d\n", req_msg->data.request_add.a,
+    log_info("handle_req_add: a=%d, b=%d, c=%d\n", req_msg->data.request_add.a,
              req_msg->data.request_add.b, c);
     return err;
 }
@@ -51,6 +51,7 @@ int handle_req_stop_server(struct msgbuf *req_msg, struct connection *conn) {
 
     int stop_server = req_msg->data.request_stop_server.stop_server;
     write(ipc_server.pipefd[1], &stop_server, sizeof(int));
+    sem_post(ipc_server.conn_new_ready);
 
     log_info("handle_req_stop_server\n");
     return -1;
@@ -109,7 +110,7 @@ void handle_connection(struct connection *conn) {
     mq_close(conn->mqrsp_fd);
     close(ipc_server.pipefd[1]);
 
-    log_info("handle_connection exit\n");
+    log_info("handle_connection process [%d] exit\n", getpid());
     exit(0);
 }
 
@@ -118,7 +119,7 @@ int server_init() {
 
     // shared memory init
     ipc_server.conn_buf_fd =
-        shm_open(CONNECTION_SHM_NAME, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+        shm_open(CONNECTION_SHM, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
     if (ipc_server.conn_buf_fd < 0) {
         log_warning("server failed shm_open\n");
         return -1;
@@ -139,20 +140,19 @@ int server_init() {
 
     memset(ipc_server.conn_buf, 0, CONNECTION_SHM_SIZE);
 
-    ipc_server.conn_buf_mutex =
-        sem_open(CONNECTION_SEM_NAME, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 0);
-    if (ipc_server.conn_buf_mutex == SEM_FAILED) {
-        log_warning("server failed sem_open\n");
+    ipc_server.conn_buf_ready =
+        sem_open(CONNECTION_BUF_SEM, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 0);
+    if (ipc_server.conn_buf_ready == SEM_FAILED) {
+        log_warning("server failed sem_open conn_buf_ready\n");
         return -1;
     }
 
-    // ipc_server.new_conn_sem = sem_open(NEW_CONNECTION_SEM_NAME,
-    //                                    O_CREAT | O_RDWR, S_IRUSR | S_IWUSR,
-    //                                    0);
-    // if (ipc_server.new_conn_sem == SEM_FAILED) {
-    //     log_warning("server failed sem_open new_conn_sem\n");
-    //     return -1;
-    // }
+    ipc_server.conn_new_ready =
+        sem_open(CONNECTION_NEW_SEM, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR, 0);
+    if (ipc_server.conn_new_ready == SEM_FAILED) {
+        log_warning("server failed sem_open conn_new_ready\n");
+        return -1;
+    }
 
     // pipe init
     int pipefd[2];
@@ -166,7 +166,7 @@ int server_init() {
 }
 
 void server_start() {
-    int err = sem_post(ipc_server.conn_buf_mutex);
+    int err = sem_post(ipc_server.conn_buf_ready);
     if (err) {
         log_warning("server_start failed\n");
         return;
@@ -175,34 +175,30 @@ void server_start() {
     log_info("server running...\n");
 
     struct connection conn;
-    int running = 1;
-    while (running) {
+    int stop = 0;
+    while (!stop) {
         // handle new connection
-        // sem_wait(ipc_server.new_conn_sem);
-        sem_wait(ipc_server.conn_buf_mutex);
+        sem_wait(ipc_server.conn_new_ready);
+        if (read(ipc_server.pipefd[0], &stop, sizeof(int)) <= 0)
+            stop = 0;
+
         if (ipc_server.conn_buf->valid) {
             log_info("new connection established\n");
             memcpy(&conn, ipc_server.conn_buf, sizeof(conn));
             handle_connection(&conn);
             memset(ipc_server.conn_buf, 0, sizeof(struct connection));
+            sem_post(ipc_server.conn_buf_ready);
         }
-        sem_post(ipc_server.conn_buf_mutex);
-
-        // check pipe if it's necessary to stop server
-        if (read(ipc_server.pipefd[0], &running, sizeof(int)) <= 0)
-            running = 1;
-        else
-            running = 0;
     }
 }
 
 void server_shutdown() {
     close(ipc_server.conn_buf_fd);
     munmap(ipc_server.conn_buf, CONNECTION_SHM_SIZE);
-    shm_unlink(CONNECTION_SHM_NAME);
+    shm_unlink(CONNECTION_SHM);
 
-    sem_close(ipc_server.conn_buf_mutex);
-    sem_unlink(CONNECTION_SEM_NAME);
+    sem_close(ipc_server.conn_buf_ready);
+    sem_unlink(CONNECTION_BUF_SEM);
 
     close(ipc_server.pipefd[0]);
     close(ipc_server.pipefd[1]);

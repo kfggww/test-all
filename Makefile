@@ -27,6 +27,9 @@ all:
 subproj := $(SRC_DIR)/syscalls
 include $(subproj)/module.mk
 
+subproj := $(SRC_DIR)/posix-ipcs
+include $(subproj)/module.mk
+
 all: third_party install
 
 third_party:
@@ -39,7 +42,7 @@ install: $(obj_execs)
 clean:
 	$(Q)rm -rf $(obj_execs) $(deps)
 
-test: all
+test:
 ifeq ($(TEST),)
 	$(Q)$(call run_tests, $(test_cases))
 else
@@ -69,4 +72,4 @@ done;
 endef
 
 -include $(deps)
-.PHONY: all clean install third_party
+.PHONY: all clean install third_party test

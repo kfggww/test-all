@@ -46,9 +46,10 @@ enum {
 #define log_debug(fmt, ...) __log_print(LOG_DEBUG, fmt, ##__VA_ARGS__)
 #define log_warning(fmt, ...) __log_print(LOG_WARNING, fmt, ##__VA_ARGS__)
 
-#define CONNECTION_SHM_NAME "/connection-shm"
-#define CONNECTION_SEM_NAME "/connection-sem"
-#define NEW_CONNECTION_SEM_NAME "/new-connection-sem"
+#define CONNECTION_SHM "/connection-shm"
+#define CONNECTION_BUF_SEM "/connection-buf-sem"
+#define CONNECTION_NEW_SEM "/connection-new-sem"
+
 #define CONNECTION_SHM_SIZE 4096
 #define MQ_NAME_SIZE 64
 

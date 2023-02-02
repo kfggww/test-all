@@ -24,17 +24,26 @@ int build_connection() {
     }
 
     // open and map shared memory
-    int shmfd = shm_open(CONNECTION_SHM_NAME, O_RDWR, 0);
-    void *shm_buf = mmap(NULL, CONNECTION_SHM_SIZE, PROT_READ | PROT_WRITE,
-                         MAP_SHARED, shmfd, 0);
+    int fd = shm_open(CONNECTION_SHM, O_RDWR, 0);
+    void *conn_buf = mmap(NULL, CONNECTION_SHM_SIZE, PROT_READ | PROT_WRITE,
+                          MAP_SHARED, fd, 0);
 
-    // write connection to shm_buf
-    sem_t *shm_buf_mutex = sem_open(CONNECTION_SEM_NAME, O_RDWR);
-    sem_wait(shm_buf_mutex);
+    // write connection to conn_buf, notify server new conncection is comming
+    sem_t *conn_buf_ready = sem_open(CONNECTION_BUF_SEM, O_RDWR);
+    sem_t *conn_new_ready = sem_open(CONNECTION_NEW_SEM, O_RDWR);
+
+    if (conn_buf_ready == SEM_FAILED || conn_new_ready == SEM_FAILED) {
+        log_warning("client %d failed sem_open\n");
+        return -1;
+    }
+
+    sem_wait(conn_buf_ready);
     connection.valid = 1;
-    memcpy(shm_buf, &connection, sizeof(connection));
-    sem_post(shm_buf_mutex);
-    sem_close(shm_buf_mutex);
+    memcpy(conn_buf, &connection, sizeof(connection));
+    sem_post(conn_new_ready);
+
+    sem_close(conn_buf_ready);
+    sem_close(conn_new_ready);
 
     log_info("client %d build connection\n", pid);
     return 0;
