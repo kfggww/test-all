@@ -40,20 +40,20 @@ int handle_req_disconnect(struct msgbuf *req_msg, struct connection *conn) {
     return -1;
 }
 
-int handle_req_stop_server(struct msgbuf *req_msg, struct connection *conn) {
+int handle_req_kill_server(struct msgbuf *req_msg, struct connection *conn) {
     // check if it is really a stop server request
     if (req_msg == NULL || conn == NULL)
         return 0;
 
     if (req_msg->type != REQ_STOP_SERVER ||
-        req_msg->data.request_stop_server.stop_server == 0)
+        req_msg->data.request_kill_server.kill_server == 0)
         return 0;
 
-    int stop_server = req_msg->data.request_stop_server.stop_server;
-    write(ipc_server.pipefd[1], &stop_server, sizeof(int));
+    int kill_server = req_msg->data.request_kill_server.kill_server;
+    write(ipc_server.pipefd[1], &kill_server, sizeof(int));
     sem_post(ipc_server.conn_new_ready);
 
-    log_info("handle_req_stop_server\n");
+    log_info("handle_req_kill_server\n");
     return -1;
 }
 
@@ -71,7 +71,7 @@ int handle_request(struct msgbuf *req_msg, struct connection *conn) {
         err = handle_req_disconnect(req_msg, conn);
         break;
     case REQ_STOP_SERVER:
-        err = handle_req_stop_server(req_msg, conn);
+        err = handle_req_kill_server(req_msg, conn);
         break;
     default:
         break;
@@ -199,6 +199,9 @@ void server_shutdown() {
 
     sem_close(ipc_server.conn_buf_ready);
     sem_unlink(CONNECTION_BUF_SEM);
+
+    sem_close(ipc_server.conn_new_ready);
+    sem_unlink(CONNECTION_NEW_SEM);
 
     close(ipc_server.pipefd[0]);
     close(ipc_server.pipefd[1]);

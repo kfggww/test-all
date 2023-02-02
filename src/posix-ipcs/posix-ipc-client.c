@@ -77,11 +77,11 @@ void request_add() {
              msgreq.data.request_add.b, msgrsp.data.response_add.c);
 }
 
-void request_stop_server() {
+void request_kill_server() {
     struct msgbuf msgreq = {.type = REQ_STOP_SERVER,
-                            .data.request_stop_server.stop_server = 1};
+                            .data.request_kill_server.kill_server = 1};
     mq_send(connection.mqreq_fd, (char *)&msgreq, sizeof(msgreq), 0);
-    log_info("client request_stop_server\n");
+    log_info("client request_kill_server\n");
 }
 
 void request_disconnect() {
@@ -101,7 +101,7 @@ void handle_command() {
             request_add();
             break;
         case 'k':
-            request_stop_server();
+            request_kill_server();
             cmd[0] = 'q';
             break;
         case 'd':

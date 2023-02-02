@@ -70,8 +70,8 @@ struct msgbuf {
         } request_disconnect;
 
         struct {
-            int stop_server;
-        } request_stop_server;
+            int kill_server;
+        } request_kill_server;
     } data;
 };
 
