@@ -4,8 +4,22 @@
 #define _GNU_SOURCE
 #include <fcntl.h>
 #include <unistd.h>
+#include <signal.h>
+#include <siginfo.h>
 
 #include "event.h"
+
+static void signal_handler(event_loop *loop, void *arg) {
+    int sig = -1;
+    ssize_t n = read(loop->sig_pipe[0].& sig, sizeof(int));
+    if (n == -1 || sig < 0 || sig >= 64)
+        return;
+    if (loop->sig_events[sig].on_signal) {
+        loop->sig_events[sig].on_signal(loop, NULL);
+    }
+}
+
+static void sigaction_handler(int sig, siginfo_t *siginfo, void *arg) {}
 
 event_loop *createEventLoop() {
     event_loop *loop = malloc(sizeof(*loop));
@@ -23,24 +37,27 @@ event_loop *createEventLoop() {
         return NULL;
     }
 
+    registerFileEvent(loop, loop->sig_pipe[0], EV_MASK_READABLE,
+                      signal_handler);
     return loop;
 }
 
 void loopEvent(event_loop *loop) {
     while (!loop->stop) {
-        int nfds = epoll_wait(loop->epfd, loop->fired_events, EV_LOOP_SIZE, -1);
+        int nfds =
+            epoll_wait(loop->epfd, loop->fired_events, EV_NFIRED_EVENT, -1);
         if (nfds < 0)
             continue;
 
         struct epoll_event *ev = NULL;
         for (int i = 0; i < nfds; i++) {
-            ev = loop->fired_events[i];
+            ev = &loop->fired_events[i];
             int fd = ev->data.fd;
-            if (ev->events & EPOLLIN && loop->events[fd].on_readable) {
-                loop->events[fd].on_readable(loop, NULL);
+            if (ev->events & EPOLLIN && loop->file_events[fd].on_readable) {
+                loop->file_events[fd].on_readable(loop, NULL);
             }
-            if (ev->events & EPOLLOUT && loop->events[fd].on_writable) {
-                loop->events[fd].on_writable(loop, NULL);
+            if (ev->events & EPOLLOUT && loop->file_events[fd].on_writable) {
+                loop->file_events[fd].on_writable(loop, NULL);
             }
         }
     }
@@ -48,10 +65,10 @@ void loopEvent(event_loop *loop) {
 
 void registerFileEvent(event_loop *loop, int fd, int mask,
                        event_handler *handler) {
-    if (fd >= EV_LOOP_SIZE)
+    if (fd >= EV_NFILE_EVENT)
         return;
 
-    event *ev = &loop->events[fd];
+    file_event *ev = &loop->file_events[fd];
     ev->fd = fd;
     if (mask & EV_MASK_READABLE) {
         ev->on_readable = handler;
