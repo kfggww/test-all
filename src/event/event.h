@@ -14,7 +14,8 @@
 #define EV_NFILE_EVENT 16
 #define EV_NFIRED_EVENT 8
 
-typedef void event_handler(event_loop *loop, void *arg);
+struct event_loop;
+typedef void event_handler(struct event_loop *loop, void *arg);
 
 typedef struct {
     int fd;

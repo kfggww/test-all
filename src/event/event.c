@@ -5,13 +5,14 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <signal.h>
-#include <siginfo.h>
 
 #include "event.h"
 
+static event_loop *__event_loop = NULL;
+
 static void signal_handler(event_loop *loop, void *arg) {
     int sig = -1;
-    ssize_t n = read(loop->sig_pipe[0].& sig, sizeof(int));
+    ssize_t n = read(loop->sig_pipe[0], &sig, sizeof(int));
     if (n == -1 || sig < 0 || sig >= 64)
         return;
     if (loop->sig_events[sig].on_signal) {
@@ -19,7 +20,11 @@ static void signal_handler(event_loop *loop, void *arg) {
     }
 }
 
-static void sigaction_handler(int sig, siginfo_t *siginfo, void *arg) {}
+static void sigaction_handler(int sig) {
+    if (__event_loop) {
+        write(__event_loop->sig_pipe[1], &sig, sizeof(int));
+    }
+}
 
 event_loop *createEventLoop() {
     event_loop *loop = malloc(sizeof(*loop));
@@ -39,6 +44,7 @@ event_loop *createEventLoop() {
 
     registerFileEvent(loop, loop->sig_pipe[0], EV_MASK_READABLE,
                       signal_handler);
+    __event_loop = loop;
     return loop;
 }
 
@@ -90,6 +96,11 @@ void registerSignalEvent(event_loop *loop, int sig, event_handler *handler) {
         return;
     loop->sig_events[sig].sig = sig;
     loop->sig_events[sig].on_signal = handler;
+
+    struct sigaction act;
+    act.sa_handler = sigaction_handler;
+    act.sa_flags = 0;
+    sigaction(sig, &act, NULL);
 }
 
 void unregisterFileEvent(event_loop *loop, int fd, int mask) {}
