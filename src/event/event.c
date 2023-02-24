@@ -52,7 +52,7 @@ void register_signal_event(event_loop_t *loop, int sig,
     loop->eventop->add_sig_event(loop, sig, handler, arg);
 }
 
-void ungister_file_event(event_loop_t *loop, int fd, int mask) {
+void unregister_file_event(event_loop_t *loop, int fd, int mask) {
     if (fd < 0 || fd >= EV_NFILE_EVENT)
         return;
     loop->eventop->del_file_event(loop, fd, mask);

@@ -59,7 +59,7 @@ void remove_eventloop(event_loop_t *loop);
 /*file event APIs*/
 void register_file_event(event_loop_t *loop, int fd, int mask,
                          event_handler_t *handler, void *arg);
-void ungister_file_event(event_loop_t *loop, int fd, int mask);
+void unregister_file_event(event_loop_t *loop, int fd, int mask);
 
 /*signal event APIs*/
 void register_signal_event(event_loop_t *loop, int sig,

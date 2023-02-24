@@ -1,12 +1,14 @@
+#define _GNU_SOURCE
 #include <stdlib.h>
 #include <string.h>
 
-#define _GNU_SOURCE
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/epoll.h>
 #include <signal.h>
+
 #include "event.h"
+
 #define EPOLL_NFIRED_EVENTS 8
 
 extern event_loop_t *base_event_loop;
@@ -124,7 +126,7 @@ void epoll_init_eventloop(event_loop_t *loop) {
                          epoll_handle_signal_event, NULL);
 }
 
-void epoll_fini_eventloop(event_loop_t *loop) {}
+void epoll_fini_eventloop(event_loop_t *loop) { free(loop->private_data); }
 
 eventop_t epoll_event_op = {
     .init_eventloop = epoll_init_eventloop,

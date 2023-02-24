@@ -1,9 +1,13 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <signal.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #include "event.h"
 
@@ -24,6 +28,52 @@ void handle_fifo(event_loop_t *loop, void *arg) {
     printf("handle fifo file event: %s", buf);
 }
 
+int create_tcpserver() {
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock == -1)
+        return sock;
+
+    struct sockaddr_in addr;
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    addr.sin_port = htons(2089);
+    int err = bind(sock, (struct sockaddr *)&addr, sizeof(addr));
+    if (err == -1)
+        goto error;
+
+    err = listen(sock, 128);
+    if (err == -1)
+        goto error;
+
+    return sock;
+error:
+    close(sock);
+    return -1;
+}
+
+void handle_client(event_loop_t *loop, void *arg) {
+    int fd = *(int *)arg;
+    char buf[32];
+    memset(buf, 0, 32);
+
+    ssize_t n = read(fd, buf, 32);
+    if (n <= 0) {
+        printf("unregister file event: %d\n", fd);
+        unregister_file_event(loop, fd, EV_MASK_ALL);
+        free(arg);
+        close(fd);
+    }
+    printf("handle client: %s\n", buf);
+}
+
+void handle_connect(event_loop_t *loop, void *arg) {
+    int sockfd = *(int *)arg;
+    int fd = accept(sockfd, NULL, NULL);
+    int *argptr = malloc(sizeof(int));
+    *argptr = fd;
+    register_file_event(loop, fd, EV_MASK_READABLE, handle_client, argptr);
+}
+
 int main(int argc, char const *argv[]) {
     event_loop_t *loop = create_eventloop();
 
@@ -34,6 +84,10 @@ int main(int argc, char const *argv[]) {
     if (fd != -1) {
         register_file_event(loop, fd, EV_MASK_READABLE, handle_fifo, &fd);
     }
+
+    int sockfd = create_tcpserver();
+    register_file_event(loop, sockfd, EV_MASK_READABLE, handle_connect,
+                        &sockfd);
 
     run_eventloop(loop);
     remove_eventloop(loop);
