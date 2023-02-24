@@ -15,39 +15,47 @@ typedef struct {
     int epfd;
     struct epoll_event fired_events[EPOLL_NFIRED_EVENTS];
     int pipes[2];
-} epoll_data_t;
+} epoll_event_data_t;
 
 static void epoll_sa_handler(int sig) {
     if (base_event_loop == NULL)
         return;
 
-    epoll_data_t *epdata = (epoll_data_t *)base_event_loop->private_data;
+    epoll_event_data_t *epdata =
+        (epoll_event_data_t *)base_event_loop->private_data;
     write(epdata->pipes[1], &sig, sizeof(int));
 }
 
 static void epoll_handle_signal_event(event_loop_t *loop, void *arg) {
-    epoll_data_t *epdata = (epoll_data_t *)base_event_loop->private_data;
+    epoll_event_data_t *epdata =
+        (epoll_event_data_t *)base_event_loop->private_data;
     int sig = -1;
     read(epdata->pipes[0], &sig, sizeof(int));
     if (sig == -1)
         return;
-    if (loop->signal_events[sig].handle_signal)
-        loop->signal_events[sig].handle_signal(loop, NULL);
+
+    event_handler_t *handler = loop->signal_events[sig].handle_signal;
+    void *argptr = loop->signal_events[sig].arg;
+    if (handler != NULL)
+        handler(loop, argptr);
 }
 
 void epoll_add_file_event(event_loop_t *loop, int fd, int mask,
-                          event_handler_t *handler) {
+                          event_handler_t *handler, void *arg) {
+    if (mask == EV_MASK_NONE)
+        return;
+
     loop->file_events[fd].fd = fd;
+    loop->file_events[fd].arg = arg;
     if (mask & EV_MASK_READABLE)
         loop->file_events[fd].handle_read = handler;
     if (mask & EV_MASK_WRITABLE)
         loop->file_events[fd].handle_write = handler;
 
-    epoll_data_t *epoll_data = (epoll_data_t *)loop->private_data;
-    int epoll_mask = 0;
-    epoll_mask |= (mask & EV_MASK_READABLE) ? EPOLLIN : 0;
-    epoll_mask |= (mask & EV_MASK_WRITABLE) ? EPOLLOUT : 0;
-    struct epoll_event epoll_event = {.data.fd = fd, .events = epoll_mask};
+    epoll_event_data_t *epoll_data = (epoll_event_data_t *)loop->private_data;
+    struct epoll_event epoll_event = {.data.fd = fd, .events = 0};
+    epoll_event.events |= (mask & EV_MASK_READABLE) ? EPOLLIN : 0;
+    epoll_event.events |= (mask & EV_MASK_WRITABLE) ? EPOLLOUT : 0;
     epoll_ctl(epoll_data->epfd, EPOLL_CTL_ADD, fd, &epoll_event);
 }
 
@@ -55,7 +63,7 @@ void epoll_del_file_event(event_loop_t *loop, int fd, int mask) {
     if (mask == EV_MASK_NONE)
         return;
 
-    epoll_data_t *epdata = (epoll_data_t *)loop->private_data;
+    epoll_event_data_t *epdata = (epoll_event_data_t *)loop->private_data;
     if (mask == EV_MASK_ALL) {
         epoll_ctl(epdata->epfd, EPOLL_CTL_DEL, fd, NULL);
     }
@@ -67,10 +75,17 @@ void epoll_del_file_event(event_loop_t *loop, int fd, int mask) {
     epoll_ctl(epdata->epfd, EPOLL_CTL_MOD, fd, &epoll_event);
 }
 
-void epoll_add_sig_event(event_loop_t *loop, int sig,
-                         event_handler_t *handler) {
+void epoll_add_sig_event(event_loop_t *loop, int sig, event_handler_t *handler,
+                         void *arg) {
+    if (sig <= 0 || sig >= EV_NSIGAL_EVENT)
+        return;
+
     loop->signal_events[sig].sig = sig;
     loop->signal_events[sig].handle_signal = handler;
+    loop->signal_events[sig].arg = arg;
+
+    struct sigaction act = {.sa_handler = epoll_sa_handler, .sa_flags = 0};
+    sigaction(sig, &act, NULL);
 }
 
 void epoll_del_sig_event(event_loop_t *loop, int sig) {
@@ -80,7 +95,7 @@ void epoll_del_sig_event(event_loop_t *loop, int sig) {
 }
 
 void epoll_dispath_events(event_loop_t *loop) {
-    epoll_data_t *epoll_data = (epoll_data_t *)loop->private_data;
+    epoll_event_data_t *epoll_data = (epoll_event_data_t *)loop->private_data;
 
     int nfd = epoll_wait(epoll_data->epfd, epoll_data->fired_events,
                          EPOLL_NFIRED_EVENTS, -1);
@@ -90,23 +105,23 @@ void epoll_dispath_events(event_loop_t *loop) {
         int mask = epoll_data->fired_events[i].events;
         file_event_t *event = &loop->file_events[evfd];
         if ((mask & EPOLLIN) && event->handle_read) {
-            event->handle_read(loop, NULL);
+            event->handle_read(loop, event->arg);
         }
         if ((mask & EPOLLOUT) && event->handle_write) {
-            event->handle_write(loop, NULL);
+            event->handle_write(loop, event->arg);
         }
     }
 }
 
 void epoll_init_eventloop(event_loop_t *loop) {
-    loop->eventop = &epoll_event_op;
-    epoll_data_t *epoll_data = malloc(sizeof(epoll_data_t));
-    memset(epoll_data, 0, sizeof(epoll_data_t));
+    epoll_event_data_t *epoll_data = malloc(sizeof(epoll_event_data_t));
+    memset(epoll_data, 0, sizeof(epoll_event_data_t));
     epoll_data->epfd = epoll_create1(0);
     pipe2(epoll_data->pipes, O_NONBLOCK | O_CLOEXEC);
+    loop->private_data = epoll_data;
 
     epoll_add_file_event(loop, epoll_data->pipes[0], EV_MASK_READABLE,
-                         epoll_handle_signal_event);
+                         epoll_handle_signal_event, NULL);
 }
 
 void epoll_fini_eventloop(event_loop_t *loop) {}
@@ -118,4 +133,5 @@ eventop_t epoll_event_op = {
     .del_file_event = epoll_del_file_event,
     .add_sig_event = epoll_add_sig_event,
     .del_sig_event = epoll_del_sig_event,
+    .dispath_events = epoll_dispath_events,
 };
