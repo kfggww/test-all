@@ -5,10 +5,13 @@
 #include <signal.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#include "cutest.h"
 #include "event.h"
 
 void handle_sigpipe(event_loop_t *loop, void *arg) {
@@ -74,17 +77,23 @@ void handle_connect(event_loop_t *loop, void *arg) {
     register_file_event(loop, fd, EV_MASK_READABLE, handle_client, argptr);
 }
 
-int main(int argc, char const *argv[]) {
+CUTEST_SUIT(test_eventloop)
+
+CUTEST_CASE(test_eventloop, eventloop) {
     event_loop_t *loop = create_eventloop();
 
     register_signal_event(loop, SIGPIPE, handle_sigpipe, NULL);
     register_signal_event(loop, SIGUSR1, handle_sigusr1, NULL);
 
-    int fd = open("event.fifo", O_RDONLY | O_NONBLOCK);
-    if (fd != -1) {
-        register_file_event(loop, fd, EV_MASK_READABLE, handle_fifo, &fd);
+    int err = mkfifo("/tmp/event.fifo", S_IRUSR | S_IWUSR);
+    int fifofd = -1;
+    if (err == 0) {
+        fifofd = open("/tmp/event.fifo", O_RDONLY | O_NONBLOCK);
+        if (fifofd != -1) {
+            register_file_event(loop, fifofd, EV_MASK_READABLE, handle_fifo,
+                                &fifofd);
+        }
     }
-
     int sockfd = create_tcpserver();
     register_file_event(loop, sockfd, EV_MASK_READABLE, handle_connect,
                         &sockfd);
@@ -92,6 +101,7 @@ int main(int argc, char const *argv[]) {
     run_eventloop(loop);
     remove_eventloop(loop);
 
-    close(fd);
-    return 0;
+    close(sockfd);
+    close(fifofd);
+    unlink("/tmp/event.fifo");
 }

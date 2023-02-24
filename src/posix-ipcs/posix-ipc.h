@@ -1,11 +1,11 @@
 #ifndef POSIX_IPC_H
 #define POSIX_IPC_H
 
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#define _GNU_SOURCE
 #include <fcntl.h> /* For O_* constants */
 #include <unistd.h>
 #include <sys/mman.h>

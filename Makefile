@@ -20,6 +20,7 @@ CFLAGS := -g
 CFLAGS += $(addprefix -I, $(common_inc))
 LDFLAGS := -L$(INSTALL_DIR)/lib -lcutest
 
+objs :=
 obj_execs :=
 
 all:
@@ -28,6 +29,9 @@ subproj := $(SRC_DIR)/syscalls
 include $(subproj)/module.mk
 
 subproj := $(SRC_DIR)/posix-ipcs
+include $(subproj)/module.mk
+
+subproj := $(SRC_DIR)/event
 include $(subproj)/module.mk
 
 all: third_party install
@@ -40,7 +44,7 @@ install: $(obj_execs)
 	$(Q)cp $^ $(INSTALL_DIR)/bin
 
 clean:
-	$(Q)rm -rf $(obj_execs) $(deps)
+	$(Q)rm -rf $(obj_execs) $(deps) $(objs)
 
 test:
 ifeq ($(TEST),)
@@ -53,6 +57,12 @@ $(BUILD_DIR)/%: %.c
 	$(Q)mkdir -p $(dir $@)
 	$(Q)$(CC) -c $(CFLAGS) $(LDFLAGS) -MM -MT $@ $< >> $(deps)
 	$(Q)$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
+
+$(BUILD_DIR)/%.o: %.c
+	$(Q)mkdir -p $(dir $@)
+	$(Q)$(CC) -c $(CFLAGS) $(LDFLAGS) -MM -MT $@ $< >> $(deps)
+	$(Q)$(CC) -c $(CFLAGS) $(LDFLAGS) -o $@ $<
+
 
 define build_install_projects
 for proj in $1; \
