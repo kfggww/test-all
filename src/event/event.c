@@ -8,101 +8,49 @@
 
 #include "event.h"
 
-static event_loop *__event_loop = NULL;
+#ifdef EPOLL_EVENT
+extern eventop_t epoll_event_op;
+#endif
 
-static void signal_handler(event_loop *loop, void *arg) {
-    int sig = -1;
-    ssize_t n = read(loop->sig_pipe[0], &sig, sizeof(int));
-    if (n == -1 || sig < 0 || sig >= 64)
-        return;
-    if (loop->sig_events[sig].on_signal) {
-        loop->sig_events[sig].on_signal(loop, NULL);
-    }
-}
+event_loop_t *base_event_loop = NULL;
 
-static void sigaction_handler(int sig) {
-    if (__event_loop) {
-        write(__event_loop->sig_pipe[1], &sig, sizeof(int));
-    }
-}
-
-event_loop *createEventLoop() {
-    event_loop *loop = malloc(sizeof(*loop));
+event_loop_t *create_eventloop() {
+    event_loop_t *loop = malloc(sizeof(*loop));
     memset(loop, 0, sizeof(*loop));
-
-    loop->stop = 0;
-    loop->epfd = epoll_create1(0);
-    if (loop->epfd == -1) {
-        free(loop);
-        return NULL;
-    }
-
-    if (pipe2(loop->sig_pipe, O_CLOEXEC | O_NONBLOCK)) {
-        free(loop);
-        return NULL;
-    }
-
-    registerFileEvent(loop, loop->sig_pipe[0], EV_MASK_READABLE,
-                      signal_handler);
-    __event_loop = loop;
+    loop->eventop = &epoll_event_op;
+    loop->eventop->init_eventloop(loop);
+    base_event_loop = loop;
     return loop;
 }
 
-void loopEvent(event_loop *loop) {
-    while (!loop->stop) {
-        int nfds =
-            epoll_wait(loop->epfd, loop->fired_events, EV_NFIRED_EVENT, -1);
-        if (nfds < 0)
-            continue;
-
-        struct epoll_event *ev = NULL;
-        for (int i = 0; i < nfds; i++) {
-            ev = &loop->fired_events[i];
-            int fd = ev->data.fd;
-            if (ev->events & EPOLLIN && loop->file_events[fd].on_readable) {
-                loop->file_events[fd].on_readable(loop, NULL);
-            }
-            if (ev->events & EPOLLOUT && loop->file_events[fd].on_writable) {
-                loop->file_events[fd].on_writable(loop, NULL);
-            }
-        }
+void run_eventloop(event_loop_t *loop) {
+    while (!loop->running) {
+        loop->eventop->dispath_events(loop);
     }
 }
 
-void registerFileEvent(event_loop *loop, int fd, int mask,
-                       event_handler *handler) {
+void register_file_event(event_loop_t *loop, int fd, int mask,
+                         event_handler_t *handler) {
     if (fd >= EV_NFILE_EVENT)
         return;
-
-    file_event *ev = &loop->file_events[fd];
-    ev->fd = fd;
-    if (mask & EV_MASK_READABLE) {
-        ev->on_readable = handler;
-    }
-    if (mask & EV_MASK_WRITABLE) {
-        ev->on_writable = handler;
-    }
-
-    struct epoll_event epoll_event;
-    epoll_event.data.fd = fd;
-    epoll_event.events = 0;
-    epoll_event.events |= (mask & EV_MASK_READABLE) ? EPOLLIN : 0;
-    epoll_event.events |= (mask & EV_MASK_WRITABLE) ? EPOLLOUT : 0;
-    epoll_ctl(loop->epfd, EPOLL_CTL_ADD, fd, &epoll_event);
+    loop->eventop->add_file_event(loop, fd, mask, handler);
 }
 
-void registerSignalEvent(event_loop *loop, int sig, event_handler *handler) {
-    if (sig <= 0 || sig > 63)
+void register_signal_event(event_loop_t *loop, int sig,
+                           event_handler_t *handler) {
+    if (sig <= 0 || sig >= EV_NSIGAL_EVENT)
         return;
-    loop->sig_events[sig].sig = sig;
-    loop->sig_events[sig].on_signal = handler;
-
-    struct sigaction act;
-    act.sa_handler = sigaction_handler;
-    act.sa_flags = 0;
-    sigaction(sig, &act, NULL);
+    loop->eventop->add_sig_event(loop, sig, handler);
 }
 
-void unregisterFileEvent(event_loop *loop, int fd, int mask) {}
+void ungister_file_event(event_loop_t *loop, int fd, int mask) {
+    if (fd < 0 || fd >= EV_NFILE_EVENT)
+        return;
+    loop->eventop->del_file_event(loop, fd, mask);
+}
 
-void unregisterSignalEvent(event_loop *loop, int sig) {}
+void unregister_signal_event(event_loop_t *loop, int sig) {
+    if (sig <= 0 || sig >= EV_NSIGAL_EVENT)
+        return;
+    loop->eventop->del_sig_event(loop, sig);
+}
