@@ -8,8 +8,9 @@
 
 #include "event.h"
 
-#ifdef EPOLL_EVENT
+#if defined(EPOLL_EVENT)
 extern eventop_t epoll_event_op;
+static eventop_t *eventop = &epoll_event_op;
 #endif
 
 event_loop_t *base_event_loop = NULL;
@@ -17,9 +18,7 @@ event_loop_t *base_event_loop = NULL;
 event_loop_t *create_eventloop() {
     event_loop_t *loop = malloc(sizeof(*loop));
     memset(loop, 0, sizeof(*loop));
-#ifdef EPOLL_EVENT
-    loop->eventop = &epoll_event_op;
-#endif
+    loop->eventop = eventop;
     loop->eventop->init_eventloop(loop);
     base_event_loop = loop;
     return loop;
