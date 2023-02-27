@@ -33,7 +33,7 @@ int build_connection() {
     sem_t *conn_new_ready = sem_open(CONNECTION_NEW_SEM, O_RDWR);
 
     if (conn_buf_ready == SEM_FAILED || conn_new_ready == SEM_FAILED) {
-        log_warning("client %d failed sem_open\n");
+        log_warning("client %d failed sem_open\n", pid);
         return -1;
     }
 
