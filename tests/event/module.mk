@@ -5,7 +5,7 @@ $(d)_deps := $($(d)_objs:%.o=%.d)
 $(d)_tests := $($(d)_objs:%.o=%)
 
 $($(d)_objs): CFLAGS += -I$(INSTALL_DIR)/include
-$($(d)_tests): LDFLAGS += -lalgs -lcutest
+$($(d)_tests): LDFLAGS += -levent -lcutest
 
 install_tests: $($(d)_tests)
 

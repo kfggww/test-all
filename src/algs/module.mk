@@ -14,6 +14,6 @@ install_src: libalgs
 libalgs: $($(d)_target)
 
 $($(d)_target): $($(d)_objs)
-	$(CC) $(LDFLAGS) -shared $^ -o $@
+	$(CC) -shared $^ -o $@
 
 .PHONY: libalgs
