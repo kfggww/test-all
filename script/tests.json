@@ -1,0 +1,11 @@
+{
+    "test-sds": {
+        "args": []
+    },
+    "test-event": {
+        "args": []
+    },
+    "test-basic-fifo": {
+        "args": []
+    }
+}

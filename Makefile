@@ -1,48 +1,35 @@
 PROJECT := test-all
 VERSION := 0.01
+BUILD_TYPE := Debug
 
-BUILD_DIR := build
-INSTALL_DIR := install
+PROJECT_DIR := $(realpath .)
+BUILD_DIR := $(PROJECT_DIR)/build
+INSTALL_DIR := $(PROJECT_DIR)/install
 
 SHELL := /bin/bash
 CC := gcc
 
-CFLAGS :=
-LDFLAGS := -L$(INSTALL_DIR)/lib
-MAKEFLAGS := --no-print-directory
+TEST :=
 
-objs :=
-shared_objs :=
-interface_hdrs :=
-tests :=
-deps :=
+all: third-party build_tests
 
-all: install_tests
+build_src:
+	$(MAKE) -ks -C src
 
-install_src:
-	mkdir -p $(INSTALL_DIR)/{lib,include}
-	cp $(shared_objs) $(INSTALL_DIR)/lib
-	cp $(interface_hdrs) $(INSTALL_DIR)/include
+build_tests: build_src
+	$(MAKE) -ks -C tests
 
-install_tests:
-	mkdir -p $(INSTALL_DIR)/bin
-	cp $^ $(INSTALL_DIR)/bin
-
-include src/module.mk
-include tests/module.mk
-
-$(BUILD_DIR)/%.o: %.c
-	mkdir -p $(dir $@)
-	$(CC) -c $(CFLAGS) $< -MM -MT $@ > $(@:%.o=%.d)
-	$(CC) -c $(CFLAGS) $< -o $@
-
-third-party: cutest
-
-cutest:
-	make install $(MAKEFLAGS) INSTALL_DIR=$(shell realpath ./install) -C third-party/cutest
+third-party:
+	$(MAKE) -ks -C third-party/cutest install BUILD_DIR=$(BUILD_DIR)/third-party/cutest INSTALL_DIR=$(INSTALL_DIR)
 
 clean:
-	rm -rf $(objs) $(shared_objs) $(tests) $(deps)
+	$(MAKE) -ks -C src clean
+	$(MAKE) -ks -C tests clean
+	$(MAKE) -ks -C third-party/cutest clean
 
-.PHONY: all clean third-party cutest
--include $(deps)
+run-test:
+	python $(PROJECT_DIR)/script/runtests.py $(TEST)
+
+.PHONY: all build_src build_tests third-party clean
+
+export BUILD_TYPE PROJECT_DIR BUILD_DIR INSTALL_DIR CC
