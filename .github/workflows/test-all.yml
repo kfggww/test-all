@@ -19,6 +19,3 @@ jobs:
 
     - name: build
       run: make
-
-    - name: ls
-      run: ls -l install/include
